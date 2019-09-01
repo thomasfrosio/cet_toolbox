@@ -60,7 +60,7 @@ OUTPUTS:
             --- Ctffind outputs.
     - pp_path_logfile.
     - toolbox_stack_processed.txt
-    
+
 INPUT FILE (-i, --input <input_file_name>):
     - The easiest way to use this program is to use an input file.
       --create_input_file can extract the default parameters into an input file.
@@ -76,40 +76,38 @@ INTERACTIVE MODE:
   
 RESTRICT THE PROCESSING TO SOME STACKS:
     - If you want to restrict the processing to some specific stacks, the toolbox allows two type of restrictions:
-      -- positive: specify the stack number(s) that should only be processed using pp_run_nb or --stack.
-         This must be an integer or list of integers (padded with zeros or not). Note that this parameter is
-         ignored when the on-the-fly mode is activated.
+      -- positive: specify the stack number(s) that should only be processed using pp_run_nb or --nb.
+         This must be an integer or list of integers (padded with zeros or not) separated by comas. Note that 
+         this parameter is ignored when the on-the-fly mode is activated.
       -- negative: specify the stack number(s) that should NOT be processed using the toolbox_stack_processed.txt
-         file. Every time a stack is processed, the program will register the processed stack to the file. You can
-         also edit this file yourself (see pp_run_overwrite). This file can be ignored (if you want to reprocess
-         some stacks, using pp_run_overwrite=1 or --overwrite.
+         file. Every time a stack is processed, the program will register the processed stack into this file. 
+         You can also edit this file yourself (see pp_run_overwrite). This file can be ignored (if you want to
+         reprocess some stacks), using pp_run_overwrite=1 or --overwrite.
   
 RESTRICT THE PROCESSING TO SOME STEPS:
-    - In any configuration, you can run the program with or without the --fly flag.
-    - In any configuration, you have to make sure you specify the correct pp_path_raw or pp_path_motioncor and
-      pp_set_field_nb and pp_set_field_tilt -> the program needs to know where are the images (if pp_path_motioncor
-      is set to 0, it doesn't need pp_path_raw).
-    - Some reminders for specific runs:
-      -- Activate ONLY Ctffind OR Deactivate MotionCor2 OR Activate ONLY Stacks:
-            Make sure you have motion corrected images in pp_path_motioncor and that both pp_set_field_nb and 
-            pp_set_field_tilt match these images (and not the raw).
-      -- Activate ONLY Batchruntomo: 
-         --- If you want to use your own stacks for batchruntomo, make sure they have the correct file name format
-             and that they are in the correct patch (pp_path_stacks/stack<nb>/pp_prefix2add_<nb>.st, with <nb> 
-             padded :03). NB: the program still needs to access the motion corrected sums.
-         --- For the initial tilt angles, you can either specify pp_path_motioncor and the program will generate the
-             rawtlt using the motion corrected sum file names or specify your mdocs file using pp_path_mdocs.
-             You cannot use your own rawtlt files.
-      -- For other cases, there are no special requirements.
-      
+    - In any configuration, you can run the program with or without the --fly flag. You also have to make sure you 
+      specify the correct pp_path_raw/pp_path_motioncor, pp_set_field_nb and pp_set_field_tilt.
+    - MotionCor2:
+      -- If activated, pp_path_raw must correspond to the path with the movies you want to motion correct.
+      -- If deactivated, pp_path_raw is NOT used and pp_path_motioncor must correspond to the path with the sums
+         you want to use. Moreover, make use that both pp_set_field_nb and pp_set_field_tilt match the motion
+         corrected sums (and not the raw).
+    - Activate ONLY Batchruntomo:
+      -- If you want to use your own stacks for batchruntomo, make sure they have the correct file name format
+         and that they are in the correct path (pp_path_stacks/stack<nb>/pp_prefix2add_<nb>.st, with <nb> 
+         padded :03). NB: pp_path_motioncor, pp_set_field_nb and pp_set_field_tilt must match the motion
+         corrected sums.
+      -- For the initial tilt angles, the program will generate the rawtlt using the motion corrected sum file names 
+         or you can specify your mdocs file using pp_path_mdocs. You cannot use your own rawtlt files.
+
 ON-THE-FLY:
-    - Briefly, you need to set 2 additionnal parameters:
+    - Briefly, you need to set 2 additional parameters:
       -- pp_otf_max_images_per_stack: Tolerated time of inactivity after which the program stops.
-      -- pp_otf_max_image2try: Expected number of image per stack (it can handle missing images no worries).
+      -- pp_otf_max_image2try: Expected number of image per stack (NB: it can handle missing images, no worries).
     - Careful as it will expect images to be written in order (like a microscope does). For instance, if 
       you transfer your images to your directory in *random* order and start the program to process the stacks
       while there are being transferred, it will not work correctly.
-    - For a better description, go look at OnTheFly.run.
+    - For a complete description, see OnTheFly.run.
       
 SERIAL-EM MDOC FILES:
     - Mdoc files can be used to specify the tilts for initial alignment in eTomo. 
@@ -120,22 +118,23 @@ SERIAL-EM MDOC FILES:
 BATCHRUNTOMO:
     - The tilt-series alignment is done by batchruntomo. As this toolbox was made for an emClarity workflow,
       by default it will generate binned SIRT-like filtered tomograms. See pp_brt parameters for more info.
-      If you want to use your own adoc file, run the program with --adoc <file.adoc>.
-    - If you want to run only batchruntomo (use your own stacks), make sure you follow what is mentioned above.
+      If you want to use your own adoc file, use pp_brt_adoc or --adoc <file.adoc> 
+    - If you want to run only batchruntomo (use your own stacks), make sure you follow what is mentioned in
+      "RESTRICT THE PROCESSING TO SOME STEPS".
   
-BATCHRUNTOMO - PROCESSES:
-    - The toolbox creates a pool of processes to create/align asynchronously motioncorrected stacks. The number
-      of processes is set to the number of stacks that need to be processed and is limited by pp_set_max_cpus 
-      (effectively the number of tilt-series that can be processed simultaneously). By default, pp_set_max_cpus is 
-      set to the number of logical cores of your CPU. Each process will additionally start 4 other processes for 
-      batchruntomo (only during expensive tasks). These additional processes are entirely managed by IMOD. I set 
-      localhost:4, this is fine for us (eBIC and STRUBI). You can increase this number 
-      (see Batchruntomo._get_batchruntomo), but 4 should be enough. Depending on your system and IMOD install, 
-      batchruntomo may not be able to use multiple cores...
+PARALLEL PROCESSING:
+    - The toolbox creates a pool of processes to create/align asynchronously stacks (and to run Ctffind). 
+      The number of processes is set to be the number of stacks that need to be processed (limited by 
+      pp_set_max_cpus) and is effectively the number of tilt-series that can be processed simultaneously.
+      By default, pp_set_max_cpus is set to the number of logical cores of your CPU.
+    - Each process will additionally start 4 other processes for batchruntomo (only during expensive tasks). 
+      These additional processes are entirely managed by IMOD. I set localhost:4, as this is fine for us 
+      (eBIC and STRUBI). You can modify this number (see Batchruntomo._get_batchruntomo), but 4 should be enough. 
+      Depending on your system and IMOD install, batchruntomo may not be able to use multiple cores...
       
 OVERWRITE:
     - By default, the program will not overwrite a tilt-series. It generates a file (toolbox_stack_processed.txt)
-      gathering the stack numbers that were already processed by the toolbox. You can modify it yourself.
+      gathering the stack number(s) that were already processed by the toolbox. You can modify it yourself.
       --overwrite or pp_run_overwrite=1 ignore this file and will reprocess everything (processed stacks will
       be then added to the the queue no matter what).
       
@@ -160,7 +159,6 @@ TODO:   1)  Denoising (Janni or Topaz? or something simpler like what we are cur
             The toolbox will generate binned SIRT-like tomogram, so it should be enough for visualization.
         2)  Generate output graphs for alignment quality and Ctffind.
         3)  Unittest.
-        4)  Allow empty parameter.
 
 WARNING:    Will only work on Python3.6 or later. No efforts were made to keep the program compatible with 
             older version.
@@ -176,61 +174,61 @@ Thomas
 # The descriptor must be correctly formatted for the interactive mode and create_input_file to work.
 # Format: <param1>//<type1>//<help1>//<default1>//..//<param2>//<type2>//<help2>//<default2>
 descriptor = f"""
-pp_set_prefix2look4//str//Look for the micrographs with this prefix. If '*', catch every mrc/tif image.
-This is used even if pp_run_motioncor=0//*//
-pp_set_prefix2add//str//Prefix to add to every output (motion corrected images, stacks, logs, etc.). Note:
-prefix/suffix from the original images are removed.//ChemoWT//
+pp_set_prefix2look4//str//Look for the movies/sums with this prefix. If '*', catch every mrc/tif image. 
+NB: This is used even if MotionCor is deactivated//*//
+pp_set_prefix2add//str//Prefix to add to every output (motion corrected images, stacks, logs, etc.). 
+NB: prefix/suffix from the original images are removed//WT//
 pp_set_field_nb//int//Field (sep: '_', counting from 0) containing stack number in the filename of raw images. 
 If you do not want to run MotionCor, this must correspond to the motion corrected images. Only numbers will 
 be kept, allowing to have tilt<nb>//1//
 pp_set_field_tilt//int//Field (sep: '_', counting from 0) containing tilt angle in the filename of raw images. 
 If you do not want to run MotionCor, this must correspond to the motion corrected images//3//
 pp_set_pixelsize//float|str//Pixel size of the raw images in Angstrom. If 'header', the pixel size is read 
-from header//header//
+from the header//header//
 pp_set_max_cpus//int//Number of processes used in parallel for creating and aligning the tilt-series. Default: 
 available logical cores//{multiprocessing.cpu_count()}//
 
 pp_path_raw//str//Path of the raw images directory//../raw//
 pp_path_motioncor//str//Where the MotionCor outputs will go. Will be created if doesn't exist//motioncor//
-pp_path_stacks//str//Path of stacks and Ctffind outputs. Will be created if doesn't exist//tilt-series//
+pp_path_stacks//str//Path of stacks and Ctffind outputs. Will be created if doesn't exist//stacks//
 pp_path_mdocfiles//str//Path of mdoc files. Used to create the rawtlt file. File names must be 
-(path)/*_<stack_nb>.mrc.mdoc with 'stack_nb' being the tilt-series number (zeros padded, 4 characters)//mdocs//
-pp_path_logfile//str//Main log file name. Other log files (MotionCor2, Ctftinf, etc.) will be saved independently //
+(path)/*_<stack_nb>.mrc.mdoc with 'stack_nb' being the stack number (zeros padded, 3 characters)//mdocs//
+pp_path_logfile//str//Main log file name. Other log files (MotionCor2, Ctftinf, etc.) will be saved independently//
 toolbox_{datetime.now():%d%b%Y}.log//
 
 pp_run_motioncor//bool//Run MotionCor2 or not. If not, the motion corrected images must be in path_motioncor and 
-the pp_set settings (except prefix) must correspond to these images//1//
-pp_run_ctffind//bool//Estimate the defocus of the lower tilted image of each stack using Ctffind//1//
-pp_run_stack//bool//Create the stack from motioncorrected images//1//
+the pp_set settings must correspond to these images//1//
+pp_run_ctffind//bool//Estimate the defocus of the lower tilt image of each stack using Ctffind//1//
+pp_run_stack//bool//Create the stack from motion-corrected sums//1//
 pp_run_batchruntomo//bool//Align the tilt-series using IMOD batchruntomo//1//
 pp_run_onthefly//bool//Triggers on-the-fly processing//0//
 pp_run_overwrite//bool//Will re-process every stack. If 0, will look at a file (toolbox_stack_processed.txt) and 
 skip the stacks that are registered inside this file (<nb>:<nb>:). The stack numbers can be padded with 0//0//
-pp_run_nb//int|list//Process only the stacks with this|these nb. Must correspond to the stack number at the field 
-pp_set_field_nb (+/- padding). This is ignored when on-the-fly is activated. Default: Process everything//all//
+pp_run_nb//int|list//Process only these/this stack(s). Must correspond to the stack number at the field 
+pp_set_field_nb (+/- 0 padding). This is ignored when on-the-fly is activated. Default: Process everything//all//
 
 pp_otf_max_images_per_stack//int//Expected number of images per stacks. Used to catch the last stack//37//
 pp_otf_max_time2try//float//Tolerated time (min) of inactivity//20//
 
-pp_mc_motioncor//str//Path of MotionCor///apps/strubi/motioncorr/2-1.1.0-gcc5.4.0-cuda8.0-sm61/
-MotionCor2//
+pp_mc_motioncor//str//Path of MotionCor2 program//
+/apps/strubi/motioncorr/2-1.1.0-gcc5.4.0-cuda8.0-sm61/MotionCor2//
 pp_mc_desired_pixelsize//float|str//Desired pixel size. If lower than current pixel size, Fourier cropping 
-will be done by MotionCor. If 'current': no Ftbin applied, If 'header_x2': Ftbin=2//
-header_x2//
+will be done by MotionCor2. If 'current': no Ftbin applied, If 'header_x2': Ftbin=2//header_x2//
 pp_mc_throw//int//Frame to remove, from the first frame. From 0//0//
 pp_mc_trunc//int//Frame to remove, from the last frame. From 0//0//
 pp_mc_tolerance//float//Tolerance of alignment accuracy: less than X pixel//0.5//
 pp_mc_iter//int//Iterations after which the alignment stops (if tolerance not achieved already)//10//
 pp_mc_patch//int,int(,int)//After global alignment, divides the corrected frames into X*X patches on which 
 the local motion is measured//5,5,20//
-pp_mc_group//int//Equally divide the input stack into non-overlapping sub-groups. Instead of aligning individual
-frames, the sums these sub-groups are aligned. The shifts of individual frames are then interpolated and 
-extrapolated. Recommended for low-signal movie stacks.//1//
+pp_mc_group//int//Equally divide the input stack into non-overlapping sub-groups. Instead of aligning individual 
+frames, the sums of these sub-groups are aligned. The shifts of individual frames are then interpolated and 
+extrapolated. Recommended for low-signal movie stacks//1//
 pp_mc_gpu//int|str//GPU IDs. Can be a list of int separated by comas (ex: 0,1,2,3) or 'auto'. These must correspond 
 to the ID displayed using nvidia-smi. If 'auto', the program will select the visible GPUs 
 that do not have any process running//auto//
-pp_mc_jobs_per_gpu//int//Number of MotionCor jobs per GPU. For K2 superresolution and 1080Ti, 3 jobs max.//4//
-pp_mc_tif//bool//If the raw images are in TIFF //1//
+pp_mc_jobs_per_gpu//int//Number of MotionCor jobs per GPU. For K2 super-resolution and 1080Ti, 2-3 jobs max. 
+I recommend to try with one stack to see how many memory is allocated//3//
+pp_mc_tif//bool//If the raw images are in TIF//1//
 pp_mc_gain//str//Gain reference for MotionCor2. Must have the corrected rotation and be a mrc file//nogain//
 
 pp_ctf_ctffind//str//Path of Ctffind///apps/strubi/ctf/4.1.5/ctffind//
@@ -248,16 +246,16 @@ pp_ctf_exhaustive//str//Slower, more exhaustive search//no//
 pp_ctf_astig_restraint//str//Use a restraint on astigmatism//no//
 pp_ctf_phase_shift//float//Find additional phase shift//no//
 
-pp_brt_adoc//str//Batchruntomo adoc file to use. Overwrites every pp_brt parameters except pp_brt_start and 
-pp_brt_end//default//
+pp_brt_adoc//str//Batchruntomo adoc file to use. Overwrites every pp_brt parameters except pp_brt_start 
+and pp_brt_end//default//
 pp_brt_gold_size//float//Size of gold beads in nm//10//
 pp_brt_rotation_angle//float//Initial angle of rotation in the plane of projection. This is the CCW positive 
 rotation from the vertical axis to the suspected tilt axis in the unaligned views//86//
-pp_brt_bin_coarse//int//Bin used for coarsed alignment (used for beads selection). If auto, set the 
-binning to have the gold beads diameter to ~12.5 pixel//auto//
-pp_brt_target_nb_beads//int//(Generous) Target number of beads per projection. Usually 30 is fine//30//
+pp_brt_bin_coarse//int//Bin used for coarsed alignment. If 'auto', set the binning to have the gold beads diameter 
+to ~12.5 pixel//auto//
+pp_brt_target_nb_beads//int//(Generous) Target number of beads per projection. Usually 25 is fine//25//
 pp_brt_bin_ali//int//Binning used for final stack and tomogram reconstruction//5//
-pp_brt_start//int//Starts at this step//0//
+pp_brt_start//int//Starts at this step. See batchruntomo documentation.//0//
 pp_brt_end//int//Ends at this step. 12: stop after gold erase. 20: stop after tomogram generation and rotation//20"""
 
 # Used by Batchruntomo as adoc file. <parameters> will be replaced by the actual inputs.
@@ -357,15 +355,16 @@ class Colors:
     k = "\033[30m"
     r = "\033[91m"
     g = "\033[92m"
+    b = "\033[96m"
     b_b = "\033[44m"
 
 
 class InputParameters:
     """
-    Gathers and manages all the inputs of the Toolbox.
+    Gather and manage all the inputs of the Toolbox.
 
     NB: Except some exceptions (see self.check_inputs), inputs are a
-        string as there are usually used for subprocessing.
+        string as there are usually used for sub-processing.
 
     NB: Add an user input:
             - Modify the descriptor. If it isn't in the descriptor,
@@ -457,7 +456,7 @@ class InputParameters:
         self.hidden_queue_filename = 'toolbox_stack_processed.txt'
 
     def get_inputs(self):
-        """Update the attr: using the inputs, either from interative or from input file."""
+        """Update the attr: using the inputs, either from interactive or from input file."""
 
         # At this point, the processing is likely to start so check IMOD.
         self.check_dependency('imod')
@@ -539,8 +538,7 @@ class InputParameters:
                            f"Using parameters:\n\t{inputs}\n\n")
 
     def warnings(self):
-        """Warn the user about specific run settings
-        Activate ONLY Ctffind OR Deactivate MotionCor2 OR Activate ONLY Stacks:"""
+        """Warn the user about specific run settings."""
 
         if not self.pp_run_motioncor:
             logger(f"{Colors.r}WARNING: MotionCor deactivated.\n"
@@ -614,15 +612,15 @@ class InputParameters:
     def _get_command_line():
         """Parse the command line."""
 
-        parser = argparse.ArgumentParser(prog='Toolbox',
-                                         description='Set of programs helping with cryoET data processing.')
+        parser = argparse.ArgumentParser(prog='CET Toolbox',
+                                         description='Program helping with CET data pre-processing.')
 
         # create_input_file OR parse input file.
         parser_group = parser.add_mutually_exclusive_group()
         parser_group.add_argument('-i', '--input',
                                   nargs='?',
                                   type=str,
-                                  help='Input file containing parameters.')
+                                  help='Input file containing the parameters.')
 
         parser_group.add_argument('-c', '--create_input_file',
                                   nargs='?',
@@ -634,7 +632,7 @@ class InputParameters:
         parser.add_argument('--fly',
                             nargs='?',
                             const=True,
-                            help='Enable on-the-fly processing: run while the raw data is being written.')
+                            help='Enable on-the-fly processing.')
         parser.add_argument('--logfile',
                             nargs='?',
                             type=str,
@@ -642,12 +640,12 @@ class InputParameters:
         parser.add_argument('--nb',
                             type=str,
                             nargs='?',
-                            help='Stack number to process. Can be a list of (zero padded) integers '
-                                 'separated by comas.')
+                            help='Stack number(s) to process. Integer or a list of (optionnaly zero padded) '
+                                 'integers separated by comas.')
         parser.add_argument('--overwrite',
                             nargs='?',
                             const=True,
-                            help='Ignore previous processing.')
+                            help='Ignore previous processing and overwrite everything.')
         parser.add_argument('--adoc',
                             type=str,
                             nargs='?',
@@ -677,7 +675,8 @@ class InputParameters:
                 head = i
         lines = lines[head:]
 
-        # Parse
+        # Parse.
+        # Empty parameters are accepted.
         inputs_dict = {}
         r = re.compile(r'^\w.+=(\S+|\s)')
         for line in lines:
@@ -752,7 +751,7 @@ class InputParameters:
 
     def _set_stack(self):
         """
-        pp_run_nb can be modified by the command line (--stack) or by the inputs (file or interactive).
+        pp_run_nb can be modified by the command line (--nb) or by the inputs (file or interactive).
         It will be read by Metadata, which expects a list of int or empty list.
 
         At this point, pp_run_nb is a string.
@@ -763,8 +762,7 @@ class InputParameters:
         NB: In addition to these possible restrictions, Metadata._exclude_queue can add a negative (process
             everything except these ones) priority restriction using the tool_processed.queue file.
 
-        NB: When on-the-fly, self.pp_run_nb will be set to the queue. That is the only positive restriction
-            possible when --fly.
+        NB: When on-the-fly, self.pp_run_nb will be set to the queue.
         """
         tmp = []
         if isinstance(self.pp_run_nb, str) and self.pp_run_nb != 'all' and not self.pp_run_onthefly:
@@ -889,11 +887,11 @@ class InputInteractive:
 
         return all_inputs
 
-    def _get_inputs_collector(self, listofparameters, use_default=False):
+    def _get_inputs_collector(self, list_of_parameters, use_default=False):
         """
         Format a list of parameters to input.
 
-        :param listofparameters:    Catch user inputs for these parameters.
+        :param list_of_parameters:    Catch user inputs for these parameters.
         :param use_default:         If True, shortcut, use default.
                                     No need to ask the user as these parameters will not be used.
         :return:                    Dictionary gathering the answer for each parameter.
@@ -902,9 +900,9 @@ class InputInteractive:
         # So create dict directly.
         answers = {}
         if use_default:
-            answers.update({param[0]: param[3] for param in listofparameters})
+            answers.update({param[0]: param[3] for param in list_of_parameters})
         else:
-            for parameter in listofparameters:
+            for parameter in list_of_parameters:
 
                 answer = input(self._format_input_header(parameter))
                 if not answer:
@@ -931,8 +929,8 @@ class InputInteractive:
             newline_or_space = '\n'
             padding_left = self.padding_allowed - len(parameter[3]) - 2
 
-        def_value = f'\033[92m[{parameter[3]}]\033[00m'
-        param = f'\033[96m{parameter[0]}\033[00m'
+        def_value = f'{Colors.g}{parameter[3]}]{Colors.reset}'
+        param = f'{Colors.b}{parameter[0]}{Colors.reset}'
 
         return f"{param} ({parameter[1]}){newline_or_space}{def_value}{' ' * padding_left}: "
 
@@ -957,7 +955,7 @@ class InputInteractive:
 
 
 class OnTheFly:
-    """When the microscope is done with a stack, send it to preprocessing."""
+    """When the microscope is done with a stack, send it to pre-processing."""
 
     def __init__(self, inputs):
         self.path = inputs.pp_path_raw if inputs.pp_run_motioncor else inputs.pp_path_motioncor
@@ -1001,14 +999,12 @@ class OnTheFly:
 
         How does it works:
             (loop every n seconds).
-            1) Catch mrc|tif files in raw path.
+            1) Catch mrc|tif files in path (raw or motioncor).
             2) Group the files in tilt-series.
             3) Split stack in two: old stack and current stack. If only one stack, old stack is not defined.
                 - old stack: added to the queue if not already processed.
-                - current stack: current stack can have many different status;
-                  it will be processed by its own function (see bellow).
             4) Decide if current stack is finished or not. If so, add to the queue if not already processed.
-            5) Send the queue to preprocessing and clear the queue.
+            5) Send the queue to pre-processing and clear the queue.
 
         Current stack:
             - The program use a buffer to "remember" how long it's been since the last change in the raw files.
@@ -1032,7 +1028,7 @@ class OnTheFly:
 
         NB: If an old stack has less images than expected, the program should handle this without any difficulty.
         NB: Stack that are already processed (toolbox_stack_processed.txt) are already in self.processed (__init__),
-            so this function will not send them to preprocessing.
+            so this function will not send them to pre-processing.
         NB: --stack is ignored: positive selection cannot be used with --fly
         """
         running = True
@@ -1178,7 +1174,7 @@ class WorkerManager:
         pp, therefore Stack waits for Ctffind (wait a few seconds). As such, if there is one stack, the pool will
         be set to 2 processes to run everything in parallel.
 
-        :param stack2process:   stack numbers that will be processed in this session of preprocessing.
+        :param stack2process:   stack numbers that will be processed in this session of pre-processing.
         :param inputs:          InputParameters.
         """
         processes = len(stack2process)
@@ -1225,7 +1221,7 @@ class WorkerManager:
 
 
 class Metadata:
-    """Manages the metadata"""
+    """Manage the metadata"""
 
     def __init__(self, inputs):
         self.inputs = inputs
@@ -1236,7 +1232,7 @@ class Metadata:
         self.extension = 'tif' if inputs.pp_mc_tif and inputs.pp_run_motioncor else 'mrc'
 
     def get_metadata(self):
-        """Gathers metadata and return it in one DataFrame."""
+        """Gather metadata and return it in one DataFrame."""
 
         meta = self._get_raw_files()
 
@@ -1273,14 +1269,13 @@ class Metadata:
 
         Some stacks can be removed (see self._clean_raw_files)
         """
-        raw_files = sorted(glob(f'{self.path2catch}/{self.inputs.pp_set_prefix2look4}*.{self.extension}'),
-                           key=os.path.getmtime)
+        raw_files = glob(f'{self.path2catch}/{self.inputs.pp_set_prefix2look4}*.{self.extension}')
         assert raw_files, f'Get Raw files: No {self.extension} files detected in path: {self.path2catch}.'
 
         # Apply the restrictions on the stacks that should be processed
         # and extract tilt-series nb and tilt angle for each image.
         raw_files, raw_files_nb, raw_files_tilt = self._clean_raw_files(raw_files)
-
+        raw_files = sorted(raw_files, key=os.path.getmtime)
         if not raw_files:
             logger('Nothing to process (maybe it is already processed?).')
             exit()
@@ -1309,6 +1304,7 @@ class Metadata:
         """
         # Every stack in stack2remove will be remove from raw_files.
         # If stack2remove is empty, negative restriction is not applied.
+        # OnTheFly already manages the negative restriction.
         if self.inputs.pp_run_overwrite or self.inputs.pp_run_onthefly:
             stack2remove = []
         else:
@@ -1444,7 +1440,7 @@ class MotionCor:
         self._run_motioncor(inputs, meta_tilt)
 
         # If pp_mc_jobs_per_gpu is too high and the device has no memory available, MotionCor
-        # gives a Cudfft2D error. So rerun missing images if any, but this time one per GPU.
+        # gives a Cufft2D error. So rerun missing images if any, but this time one per GPU.
         meta_tilt = self._check_motioncor_output(meta_tilt)
         if len(meta_tilt) > 0:
             logger(f"\n{Colors.r}MotionCor WARNING:\n"
@@ -1546,7 +1542,7 @@ class MotionCor:
 
 class Stack:
     """
-    Called by preprocessing. First create the stack and then call Batchruntomo to align it.
+    Called by pre-processing. First create the stack and then call Batchruntomo to align it.
 
     The structure of this class is quite limited (__init__ needs to do
     everything) because of the way I originally organized the multiprocessing.
@@ -1555,7 +1551,7 @@ class Stack:
 
     def __init__(self, task_from_manager):
         """
-        Once the tilt-series is created, call Batchruntomo to start the alignment.
+        Once the stack is created, call Batchruntomo to start the alignment.
 
         :param task_from_manager:   [stack, meta_tilt, inputs]
         """
@@ -1622,7 +1618,6 @@ class Stack:
         mdocfile = glob(f"{mdoc_path}/*_{self.stack_padded}.mrc.mdoc")
         try:
             if len(mdocfile) == 0 or len(mdocfile) > 1:
-                print(1)
                 raise ValueError
 
             with open(mdocfile[0], 'r') as f:
@@ -1632,7 +1627,11 @@ class Stack:
                 raise ValueError
             rawtlt.sort()
             rawtlt = '\n'.join((str(i) for i in rawtlt)) + '\n'
+            self.log += f'{TAB}Mdoc file: True.\n'
+
+        # No mdoc, more than one mdoc or mdoc with missing images.
         except ValueError:
+            self.log += f'{TAB}Mdoc file: False.\n'
             rawtlt = '\n'.join(meta_tilt['tilt'].astype(str)) + '\n'
 
         with open(self.filename_rawtlt, 'w') as f:
@@ -1648,7 +1647,7 @@ class Stack:
 
 class Batchruntomo:
     """
-    The structure of this class is quite limited ( __init__ needs to do
+    The structure of this class is quite limited (__init__ needs to do
     everything) because of the way I originally organized the multiprocessing.
     """
 
@@ -1688,7 +1687,7 @@ class Batchruntomo:
         self._get_batchruntomo_log()
 
     def _create_adoc(self, inputs):
-        """Create an adoc file from default adoc or using spefied adoc file directly."""
+        """Create an adoc file from default adoc or using specified adoc file directly."""
 
         if inputs.pp_brt_adoc == 'default':
             # Compute bin coarsed using desired pixel size.
@@ -1821,7 +1820,7 @@ class Batchruntomo:
 
 class Ctffind:
     """
-    The structure of this class is quite limited ( __init__ or __call__ needs to do
+    The structure of this class is quite limited (__init__ or __call__ needs to do
     everything) because of the way I originally organized the multiprocessing.
     """
 
@@ -1906,7 +1905,7 @@ class Ctffind:
 
 
 class Logger:
-    """When you needs to save something to log file and/or sent something to stdout."""
+    """Save something to log file and/or sent something to stdout."""
 
     def __init__(self, inputs):
         self.lock = Lock()
@@ -1914,11 +1913,11 @@ class Logger:
 
     def __call__(self, log, stdout=True, nl=False):
         """
-        Send a string to stdtout and log file one process at a time.
+        Send a string to stdout and log file one process at a time.
 
         :param log:     String to print and save to logfile.
         :param stdout:  print or not.
-        :param nl:      newline
+        :param nl:      Add a newline at the beginning of the message.
         """
         self.lock.acquire()
 
@@ -1935,7 +1934,6 @@ class Logger:
 
 def preprocessing(inputs):
     """
-    Create and align stacks from raw images.
     Each tilt-series is treated sequentially, but most steps are asynchronous.
     See individual function fore more detail.
 
