@@ -13,7 +13,7 @@ from datetime import datetime
 
 import pandas as pd
 
-VERSION = 0.119
+VERSION = '0.12.0'
 
 """
 Preprocessing of CET raw images.
@@ -24,33 +24,30 @@ Usage:
     python tool_preprocessing.py -h
 
 
-What preprocessing will do:
+OVERVIEW:
     - Run Motioncor2 one tilt-series at a time. The tilt-series is parallelized across the available GPUs
       (see pp_mc_gpu and pp_mc_jobs_per_gpu). This is the main advantage of this program, as it can correct 
       an entire stack in a few seconds if you have high-end GPUs/multiple GPUs.
-    - Once the images from one tilt-series have been motion corrected, the tilt-series will be made and aligned, 
+    - Once the images from one tilt-series have been motion corrected, the tilt-series will be create and aligned, 
       and the defocus at the tilt axis will be estimated by Ctffind.
       This step is done in parallel of the main process running MotionCor and the number of stack allowed to be
-      process at the same time is set by pp_set_max_cpus (default is the number of CPU cores).
-    - An on-the-fly mode is available (--fly) allowing to process data while it is being written.
-
+      process at the same time is set by the number of motion corrected stacks or pp_set_max_cpus (default: nb of 
+      logical cores).
+    - An on-the-fly mode is available (--fly) allowing to process data while it is being acquired at the microscope.
 
 RAW FILE NAMES:
-    - The micrograph file names must have at least 3 informations:
+    - The micrograph file names must have at least 3 information:
         -- The stack number.
         -- The tilt angle.
         -- An extension, either .mrc of .tif.
-        
     - You can set the format of your micrograph file names using pp_set_field_nb, pp_set_field_tilt,
-      pp_set_prefix_raw and:
+      pp_set_prefix2look4 and:
         -- The stack number, at the position pp_set_field_nb, can be padded with zeros (4, 04, 004, etc.)
-           and decorated with none-digit characters (4, tilt4, [4], stack4.mrc, etc.). Must be an integer.
-        -- On the other end, the tilt angles are less flexible: the extension can be removed (42, 42.00, 42.00.mrc 
-           and 42.tif, etc.) as well as the [] decorator ([42] and [42.00].mrc both work). Any other digit
-           will not be handle correctly.
-    
-    - Usually we use the following format: <prefix>_<stack_nb>_<order>_<tilt>.mrc/tif.
-
+           and decorated with none-digit characters (4, tilt4, [4], stack4.mrc, etc.). It must be an integer.
+        -- On the other end, the tilt angles are less flexible: the extension can be removed (42, 42.00, 42.00.mrc,
+           42.tif, etc.) as well as the [] decorator ([42] or [42.00].mrc). Any other digit will not be 
+           handle correctly.
+    - Usually we use the following format: <prefix>_<stack_nb>_<order>_<tilt>.mrc/tif; i.e. WT_011_037_54.00.tif
 
 OUTPUTS:
     - pp_path_motioncor/
@@ -58,50 +55,75 @@ OUTPUTS:
         -- MotionCor2 logs (one per stack)
     - pp_path_stacks/
         -- tilt<nb>/
-            --- <pp_set_prefix>_<nb>.st and eTomo outputs.
+            --- <pp_set_prefix2add>_<nb>.st and eTomo outputs. (<nb> - stack number: 3 digit number padded with 
+                zeros (001, 002, etc.).
             --- Ctffind outputs.
-    - program logfile.
+    - pp_path_logfile.
     - toolbox_stack_processed.txt
     
-    (<nb>, alias stack number, is a 3 digit number padded with zeros (001, 002, etc.).
-
-
-YOU SHOUD KNOW:
-    - INPUT FILE (-i, --input <input_file_name>):
-      The easiest way to use this program is to use an input file.
+INPUT FILE (-i, --input <input_file_name>):
+    - The easiest way to use this program is to use an input file.
       --create_input_file can extract the default parameters into an input file.
       I strongly recommend to read at least once the parameters available for the user, as it will give you
       a better idea of what is and isn't possible to do in the current version.
-      
-    - INTERACTIVE MODE:
-      If no argument specified when starting the program, the interactive mode is triggered.
+  
+INTERACTIVE MODE:
+    - If no argument specified when starting the program, the interactive mode is triggered.
       It will ask you, one by one, to set the parameters.
       For each parameter, it gives you the parameter ID, the expected type and the default value.
       Answering '+' will show the description of this parameter.
+  
+RESTRICT THE PROCESSING TO SOME STACKS:
+    - If you want to restrict the processing to some specific stacks, the toolbox allows two type of restrictions:
+      -- positive: specify the stack number(s) that should only be processed using pp_run_nb or --stack.
+         This must be an integer or list of integers (padded with zeros or not). Note that this parameter is
+         ignored when the on-the-fly mode is activated.
+      -- negative: specify the stack number(s) that should NOT be processed using the toolbox_stack_processed.txt
+         file. Every time a stack is processed, the program will register the processed stack to the file. You can
+         also edit this file yourself (see pp_run_overwrite). This file can be ignored (if you want to reprocess
+         some stacks, using pp_run_overwrite=1 or --overwrite.
+  
+RESTRICT THE PROCESSING TO SOME STEPS:
+    - In any configuration, you can run the program with or without the --fly flag.
+    - In any configuration, you have to make sure you specify the correct pp_path_raw or pp_path_motioncor and
+      pp_set_field_nb and pp_set_field_tilt -> the program needs to know where are the images (if pp_path_motioncor
+      is set to 0, it doesn't need pp_path_raw).
+    - Some reminders for specific runs:
+      -- Activate ONLY Ctffind OR Deactivate MotionCor2 OR Activate ONLY Stacks:
+            Make sure you have motion corrected images in pp_path_motioncor and that both pp_set_field_nb and 
+            pp_set_field_tilt match these images (and not the raw).
+      -- Activate ONLY Batchruntomo: 
+         --- If you want to use your own stacks for batchruntomo, make sure they have the correct file name format
+             and that they are in the correct patch (pp_path_stacks/stack<nb>/pp_prefix2add_<nb>.st, with <nb> 
+             padded :03). NB: the program still needs to access the motion corrected sums.
+         --- For the initial tilt angles, you can either specify pp_path_motioncor and the program will generate the
+             rawtlt using the motion corrected sum file names or specify your mdocs file using pp_path_mdocs.
+             You cannot use your own rawtlt files.
+      -- For other cases, there are no special requirements.
       
-    - RESTRICT THE PROCESSING TO SOME STACKS:
-      If you want to restrict the processing to some specific stacks, the toolbox allows two type of restrictions:
-        -- positive: specify the stack number(s) that should only be processed using pp_run_stack or --stack.
-           This must be an integer or list of integers (padded with zeros or not). Note that this parameter is
-           ignored when the on-the-fly mode is activated.
-        -- negative: specify the stack number(s) that should NOT be processed using the toolbox_stack_processed.txt
-           file. Every time a stack is processed, the program will register the processed stack to the file. You can
-           also edit this file yourself (see pp_run_overwrite). This file can be ignored (if you want to reprocess
-           some stacks, using pp_run_overwrite=1 or --overwrite.
+ON-THE-FLY:
+    - Briefly, you need to set 2 additionnal parameters:
+      -- pp_otf_max_images_per_stack: Tolerated time of inactivity after which the program stops.
+      -- pp_otf_max_image2try: Expected number of image per stack (it can handle missing images no worries).
+    - Careful as it will expect images to be written in order (like a microscope does). For instance, if 
+      you transfer your images to your directory in *random* order and start the program to process the stacks
+      while there are being transferred, it will not work correctly.
+    - For a better description, go look at OnTheFly.run.
       
-    - SERIAL-EM MDOC FILES:
-      Mdoc files can be used to specify the tilts for initial alignment in eTomo. 
+SERIAL-EM MDOC FILES:
+    - Mdoc files can be used to specify the tilts for initial alignment in eTomo. 
       The files have to follow this format: "<pp_path_mdocfiles>/*_<stack_nb>.mrc.mdoc". 
-      pp_path_mdocfiles can be modified by the user and stack_nb must be a number padded with zeros (4 characters)
-      (ex: 0001, 0010, ..., 0666). Otherwise, the program uses the tilts from the raw image filenames.
-      
-    - BATCHRUNTOMO:
-      The tilt-series alignment is done by batchruntomo. As this toolbox was made for an emClarity workflow,
+      pp_path_mdocfiles can be modified by the user and stack_nb must be a number padded with zeros (3 characters)
+      (ex: 001, 010, 100, etc.). Otherwise, the program uses the tilts from the raw image filenames.
+  
+BATCHRUNTOMO:
+    - The tilt-series alignment is done by batchruntomo. As this toolbox was made for an emClarity workflow,
       by default it will generate binned SIRT-like filtered tomograms. See pp_brt parameters for more info.
       If you want to use your own adoc file, run the program with --adoc <file.adoc>.
-      
-    - BATCHRUNTOMO - PROCESSES:
-      The toolbox creates a pool of processes to create/align asynchronously motioncorrected stacks. The number
+    - If you want to run only batchruntomo (use your own stacks), make sure you follow what is mentioned above.
+  
+BATCHRUNTOMO - PROCESSES:
+    - The toolbox creates a pool of processes to create/align asynchronously motioncorrected stacks. The number
       of processes is set to the number of stacks that need to be processed and is limited by pp_set_max_cpus 
       (effectively the number of tilt-series that can be processed simultaneously). By default, pp_set_max_cpus is 
       set to the number of logical cores of your CPU. Each process will additionally start 4 other processes for 
@@ -110,36 +132,34 @@ YOU SHOUD KNOW:
       (see Batchruntomo._get_batchruntomo), but 4 should be enough. Depending on your system and IMOD install, 
       batchruntomo may not be able to use multiple cores...
       
-    - OVERWRITE:
-      By default, the program will not overwrite a tilt-series. It generates a file (toolbox_stack_processed.txt)
+OVERWRITE:
+    - By default, the program will not overwrite a tilt-series. It generates a file (toolbox_stack_processed.txt)
       gathering the stack numbers that were already processed by the toolbox. You can modify it yourself.
       --overwrite or pp_run_overwrite=1 ignore this file and will reprocess everything (processed stacks will
       be then added to the the queue no matter what).
       
-    - MOTIONCOR2 - GPU IDs:
-      By default, the GPUs are set automatically. If one GPU is hosting one or multiple processes, it will
+MOTIONCOR2 - GPU IDs:
+    - By default, the GPUs are set automatically. If one GPU is hosting one or multiple processes, it will
       be discarded. Only works with Nvidia devices (nvidia-smi has to be installed).
       The user can still specify the GPU ID(s), starting from 0.
       
-    - MOTIONCOR2 - PROCESS per GPUS:
-      At the moment, the user has to define the number of jobs to run simultaneously within the same GPUs using
+MOTIONCOR2 - PROCESS per GPUS:
+    - At the moment, the user has to define the number of jobs to run simultaneously within the same GPUs using
       pp_mc_job_per_gpu. This is not ideal but to make it automatic I would need to load additional third parties 
       (ex: pyCUDA). Therefore, this step is manual for now. This number mainly depends on the memory of your GPU(s)
-      and the size of your images.
-      If too many jobs are spawn in the device, MotionCor2 will fail. The program will let you know 
-      and will restart the jobs that failed setting pp_mc_job_per_gpu to 1.
+      and the size of your images. If too many jobs are spawn in the device, MotionCor2 will fail. The program will 
+      let you know and will restart the jobs that failed setting pp_mc_job_per_gpu to 1.
       
-    - DEFAULT PARAMETERS:
-      To change the default parameters, you only need to change the 'descriptor' variable bellow and change
+DEFAULT PARAMETERS:
+    - To change the default parameters, you only need to change the 'descriptor' variable bellow and change
       the corresponding fields. Careful not to mess up the format.
 
             
 TODO:   1)  Denoising (Janni or Topaz? or something simpler like what we are currently doing in MATLAB...)
             The toolbox will generate binned SIRT-like tomogram, so it should be enough for visualization.
-
         2)  Generate output graphs for alignment quality and Ctffind.
-        
-        3)  TEST REQUIRED!
+        3)  Unittest.
+        4)  Allow empty parameter.
 
 WARNING:    Will only work on Python3.6 or later. No efforts were made to keep the program compatible with 
             older version.
@@ -155,18 +175,19 @@ Thomas
 # The descriptor must be correctly formatted for the interactive mode and create_input_file to work.
 # Format: <param1>//<type1>//<help1>//<default1>//..//<param2>//<type2>//<help2>//<default2>
 descriptor = f"""
-pp_set_prefix_raw//str//Prefix of the raw images to look for. If '*', catch for every mrc/tif image//*//
-pp_set_prefix//str//Prefix to add to every output (motion corrected images, stacks, logs, etc.)//ChemoWT//
+pp_set_prefix2look4//str//Look for the micrographs with this prefix. If '*', catch every mrc/tif image.
+This is used even if pp_run_motioncor=0//*//
+pp_set_prefix2add//str//Prefix to add to every output (motion corrected images, stacks, logs, etc.). Note:
+prefix/suffix from the original images are removed.//ChemoWT//
 pp_set_field_nb//int//Field (sep: '_', counting from 0) containing stack number in the filename of raw images. 
 If you do not want to run MotionCor, this must correspond to the motion corrected images. Only numbers will 
 be kept, allowing to have tilt<nb>//1//
 pp_set_field_tilt//int//Field (sep: '_', counting from 0) containing tilt angle in the filename of raw images. 
-If you do not want to run MotionCor, this must correspond to the motion corrected images. Only numbers will 
-be kept, allowing to have [<angle>] for example//3//
+If you do not want to run MotionCor, this must correspond to the motion corrected images//3//
 pp_set_pixelsize//float|str//Pixel size of the raw images in Angstrom. If 'header', the pixel size is read 
 from header//header//
-pp_set_max_cpus//int//Number of processes used in parallel for creating and aligning the tilt-series. Default: available
-logical cores//{multiprocessing.cpu_count()}//
+pp_set_max_cpus//int//Number of processes used in parallel for creating and aligning the tilt-series. Default: 
+available logical cores//{multiprocessing.cpu_count()}//
 
 pp_path_raw//str//Path of the raw images directory//../raw//
 pp_path_motioncor//str//Where the MotionCor outputs will go. Will be created if doesn't exist//motioncor//
@@ -179,12 +200,13 @@ toolbox_{datetime.now():%d%b%Y}.log//
 pp_run_motioncor//bool//Run MotionCor2 or not. If not, the motion corrected images must be in path_motioncor and 
 the pp_set settings (except prefix) must correspond to these images//1//
 pp_run_ctffind//bool//Estimate the defocus of the lower tilted image of each stack using Ctffind//1//
+pp_run_stack//bool//Create the stack from motioncorrected images//1//
 pp_run_batchruntomo//bool//Align the tilt-series using IMOD batchruntomo//1//
 pp_run_onthefly//bool//Triggers on-the-fly processing//0//
 pp_run_overwrite//bool//Will re-process every stack. If 0, will look at a file (toolbox_stack_processed.txt) and 
 skip the stacks that are registered inside this file (<nb>:<nb>:). The stack numbers can be padded with 0//0//
-pp_run_stack//int|list//Process only these stacks. Must correspond to the stack number at the field pp_set_field_nb. 
-This is ignored when on-the-fly is activated. Default: Process everything//all//
+pp_run_nb//int|list//Process only the stacks with this|these nb. Must correspond to the stack number at the field 
+pp_set_field_nb (+/- padding). This is ignored when on-the-fly is activated. Default: Process everything//all//
 
 pp_otf_max_images_per_stack//int//Expected number of images per stacks. Used to catch the last stack//37//
 pp_otf_max_time2try//float//Tolerated time (min) of inactivity//20//
@@ -365,8 +387,8 @@ class InputParameters:
 
         # Set attributes to None for now.
         # self.get_inputs will update them using interactive mode or input file.
-        self.pp_set_prefix_raw = None
-        self.pp_set_prefix = None
+        self.pp_set_prefix2look4 = None
+        self.pp_set_prefix2add = None
         self.pp_set_field_nb = None
         self.pp_set_field_tilt = None
         self.pp_set_pixelsize = None
@@ -419,10 +441,11 @@ class InputParameters:
 
         self.pp_run_motioncor = None
         self.pp_run_ctffind = None
+        self.pp_run_stack = None
         self.pp_run_batchruntomo = None
         self.pp_run_onthefly = None
         self.pp_run_overwrite = None
-        self.pp_run_stack = None  # See self._set_stack
+        self.pp_run_nb = None  # See self._set_stack
 
         self.hidden_oft_gpu = None  # See Metadata._get_gpu_id
         self.hidden_mc_ftbin = None  # See self.set_pixelsize
@@ -509,6 +532,18 @@ class InputParameters:
         with open(self.pp_path_logfile, 'a') as log_file:
             log_file.write(f'Toobox version {VERSION}.\n'
                            f"Using parameters:\n\t{inputs}\n\n")
+
+    def warnings(self):
+        """Warn the user about specific run settings
+        Activate ONLY Ctffind OR Deactivate MotionCor2 OR Activate ONLY Stacks:"""
+
+        if not self.pp_run_motioncor:
+            logger(f"{Colors.r}WARNING: MotionCor deactivated.\n"
+                   f"'pp_set_field_nb', 'pp_set_field_tilt' must match the motion corrected images.{Colors.reset}\n")
+        if not self.pp_run_stack and self.pp_run_batchruntomo:
+            logger(f"{Colors.r}WARNING: Newstack deactivated.\n"
+                   f"Your stacks must be as followed: pp_path_stacks/stack<nb>/pp_prefix2add_<nb>.st, "
+                   f"with <nb> being the 3 digit stack number (padded with zeros).{Colors.reset}\n")
 
     def create_input_file(self):
         """Write an input file using the default parameters."""
@@ -599,7 +634,7 @@ class InputParameters:
                             nargs='?',
                             type=str,
                             help='Log file name.')
-        parser.add_argument('--stack',
+        parser.add_argument('--nb',
                             type=str,
                             nargs='?',
                             help='Stack number to process. Can be a list of (zero padded) integers '
@@ -661,10 +696,10 @@ class InputParameters:
 
         head = 'Check inputs:'
 
-        # Raw path must exist and pp_set_prefix should not be an empty string.
-        assert os.path.isdir(self.pp_path_raw), f"{head} pp_path_raw ({self.pp_path_raw}) not found."
-        if self.pp_set_prefix == '':
-            raise ValueError(f'{head} {self.pp_set_prefix} should not be empty.')
+        if self.pp_run_motioncor:
+            assert os.path.isdir(self.pp_path_raw), f"{head} pp_path_raw ({self.pp_path_raw}) not found."
+        if self.pp_set_prefix2add == '':
+            raise ValueError(f'{head} {self.pp_set_prefix2add} should not be empty.')
 
         # Convert to int.
         for _input in ('pp_set_field_nb',
@@ -679,6 +714,7 @@ class InputParameters:
         # Convert to bool.
         for _input in ('pp_run_motioncor',
                        'pp_run_ctffind',
+                       'pp_run_stack',
                        'pp_run_batchruntomo',
                        'pp_run_onthefly',
                        'pp_run_overwrite',
@@ -706,15 +742,15 @@ class InputParameters:
         if self.cmd_line.overwrite:
             self.pp_run_overwrite = self.cmd_line.overwrite
 
-        if self.cmd_line.stack:
-            self.pp_run_stack = self.cmd_line.stack
+        if self.cmd_line.nb:
+            self.pp_run_nb = self.cmd_line.nb
 
     def _set_stack(self):
         """
-        pp_run_stack can be modified by the command line (--stack) or by the inputs (file or interactive).
+        pp_run_nb can be modified by the command line (--stack) or by the inputs (file or interactive).
         It will be read by Metadata, which expects a list of int or empty list.
 
-        At this point, pp_run_stack is a string.
+        At this point, pp_run_nb is a string.
         If 'all', all the available stacks should be selected: Set it to [].
         If string of integers (separated by comas), restricts to specific stacks:
             Convert str of int -> list of int.
@@ -722,18 +758,18 @@ class InputParameters:
         NB: In addition to these possible restrictions, Metadata._exclude_queue can add a negative (process
             everything except these ones) priority restriction using the tool_processed.queue file.
 
-        NB: When on-the-fly, self.pp_run_stack will be set to the queue. That is the only positive restriction
+        NB: When on-the-fly, self.pp_run_nb will be set to the queue. That is the only positive restriction
             possible when --fly.
         """
         tmp = []
-        if isinstance(self.pp_run_stack, str) and self.pp_run_stack != 'all' and not self.pp_run_onthefly:
+        if isinstance(self.pp_run_nb, str) and self.pp_run_nb != 'all' and not self.pp_run_onthefly:
             try:
-                for nb in self.pp_run_stack.split(','):
+                for nb in self.pp_run_nb.split(','):
                     tmp.append(int(nb))
             except ValueError:
-                raise ValueError("Restrict stack: pp_run_stack must be 'all' "
+                raise ValueError("Restrict stack: pp_run_nb must be 'all' "
                                  "or list of integers separated by comas.")
-        self.pp_run_stack = tmp
+        self.pp_run_nb = tmp
 
     @staticmethod
     def _get_pixelsize_header(mrc_filename):
@@ -781,10 +817,13 @@ class InputParameters:
     def _set_desired_pixelsize(self):
         """If the desired pixel size rely on the current pixel size, update it."""
 
-        if self.pp_mc_desired_pixelsize == 'header_x2':
-            self.pp_mc_desired_pixelsize = self.pp_set_pixelsize * 2
-        elif self.pp_mc_desired_pixelsize == 'current':
+        if not self.pp_run_motioncor:
             self.pp_mc_desired_pixelsize = self.pp_set_pixelsize
+        else:
+            if self.pp_mc_desired_pixelsize == 'header_x2':
+                self.pp_mc_desired_pixelsize = self.pp_set_pixelsize * 2
+            elif self.pp_mc_desired_pixelsize == 'current':
+                self.pp_mc_desired_pixelsize = self.pp_set_pixelsize
 
     def _set_ftbin(self):
         """Compute Ftbin for MotionCor2."""
@@ -916,9 +955,8 @@ class OnTheFly:
     """When the microscope is done with a stack, send it to preprocessing."""
 
     def __init__(self, inputs):
-        # Raw files.
-        self.path = inputs.pp_path_raw
-        self.prefix = inputs.pp_set_prefix_raw
+        self.path = inputs.pp_path_raw if inputs.pp_run_motioncor else inputs.pp_path_motioncor
+        self.prefix = inputs.pp_set_prefix2look4
         self.extension = 'tif' if inputs.pp_mc_tif and inputs.pp_run_motioncor else 'mrc'
         self.field_nb = inputs.pp_set_field_nb
 
@@ -1026,7 +1064,7 @@ class OnTheFly:
             # Send to preprocessing.
             if self.queue:
                 print('\n')
-                inputs.pp_run_stack = self.queue
+                inputs.pp_run_nb = self.queue
                 preprocessing(inputs)
 
             # Reset the length if necessary.
@@ -1129,14 +1167,12 @@ class WorkerManager:
 
     def __init__(self, stack2process, inputs):
         """
-        Start the pool: one child per stack but still limited to the number of logical cores.
+        Start the pool: two child per stack but still limited to the number of logical cores.
 
         :param stack2process:   stack numbers that will be processed in this session of preprocessing.
         :param inputs:          InputParameters.
-
-        I use a Semaphore to limit the number of process to the size of the pool.
         """
-        processes = len(stack2process)
+        processes = len(stack2process) * 2
         processes = processes if processes <= inputs.pp_set_max_cpus else inputs.pp_set_max_cpus
         self.semaphore = Semaphore(processes)
         self.pool = multiprocessing.Pool(processes=processes)
@@ -1204,7 +1240,7 @@ class Metadata:
             meta['gpu'] = self._get_gpu_id()
             meta['output'] = meta.apply(
                 lambda row: f"{self.inputs.pp_path_motioncor}/"
-                            f"{self.inputs.pp_set_prefix}_{row['nb']:03}_{row['tilt']}.mrc",
+                            f"{self.inputs.pp_set_prefix2add}_{row['nb']:03}_{row['tilt']}.mrc",
                 axis=1)
         else:
             meta['output'] = meta['raw']
@@ -1224,7 +1260,7 @@ class Metadata:
 
         Some stacks can be removed (see self._clean_raw_files)
         """
-        raw_files = sorted(glob(f'{self.path2catch}/{self.inputs.pp_set_prefix_raw}*.{self.extension}'),
+        raw_files = sorted(glob(f'{self.path2catch}/{self.inputs.pp_set_prefix2look4}*.{self.extension}'),
                            key=os.path.getmtime)
         assert raw_files, f'Get Raw files: No {self.extension} files detected in path: {self.path2catch}.'
 
@@ -1242,7 +1278,7 @@ class Metadata:
         """
         First apply a restriction on which stack to keep for processing:
             There are two possible restrictions:
-                - pp_run_stack: positive restriction; process only these specified stacks.
+                - pp_run_nb: positive restriction; process only these specified stacks.
                 - toolbox.queue: negative restriction; do not process these stacks.
 
             The negative restriction is the priority restriction and can be deactivated
@@ -1276,8 +1312,8 @@ class Metadata:
                 continue
 
             # Then check that the stack is one of the stack that should be processed.
-            # If self.inputs.pp_run_stack is empty, then positive restriction is not applied.
-            if self.inputs.pp_run_stack and stack_nb not in self.inputs.pp_run_stack:
+            # If self.inputs.pp_run_nb is empty, then positive restriction is not applied.
+            if self.inputs.pp_run_nb and stack_nb not in self.inputs.pp_run_nb:
                 continue
 
             raw_files_cleaned.append(file)
@@ -1389,7 +1425,7 @@ class MotionCor:
         """
         self.log = []
         self.stack_padded = f'{stack:03}'
-        self.log_filename = f"{inputs.pp_path_motioncor}/{inputs.pp_set_prefix}_{self.stack_padded}.log"
+        self.log_filename = f"{inputs.pp_path_motioncor}/{inputs.pp_set_prefix2add}_{self.stack_padded}.log"
         self.first_run = True
 
         self._run_motioncor(inputs, meta_tilt)
@@ -1511,10 +1547,10 @@ class Stack:
         """
         stack, meta_tilt, inputs = task_from_manager
         self.stack_padded = f'{stack:03}'
-        self.path = f'{inputs.pp_path_stacks}/tilt{self.stack_padded}'
-        self.filename_stack = f"{self.path}/{inputs.pp_set_prefix}_{self.stack_padded}.st"
-        self.filename_fileinlist = f"{self.path}/{inputs.pp_set_prefix}_{self.stack_padded}.txt"
-        self.filename_rawtlt = f"{self.path}/{inputs.pp_set_prefix}_{self.stack_padded}.rawtlt"
+        self.path = f'{inputs.pp_path_stacks}/stack{self.stack_padded}'
+        self.filename_stack = f"{self.path}/{inputs.pp_set_prefix2add}_{self.stack_padded}.st"
+        self.filename_fileinlist = f"{self.path}/{inputs.pp_set_prefix2add}_{self.stack_padded}.txt"
+        self.filename_rawtlt = f"{self.path}/{inputs.pp_set_prefix2add}_{self.stack_padded}.rawtlt"
         self.log = f'Alignment - {Colors.b_b}{Colors.k}stack{self.stack_padded}{Colors.reset}:\n'
 
         os.makedirs(self.path, exist_ok=True)
@@ -1522,17 +1558,21 @@ class Stack:
         # To create the template for newstack and the rawtlt,
         # the images needs to be ordered by tilt angles.
         meta_tilt = meta_tilt.sort_values(by='tilt', axis=0, ascending=True)
-
-        self._create_template_newstack(meta_tilt)
         self._create_rawtlt(meta_tilt, inputs.pp_path_mdocfiles)
 
         # Run newstack.
-        t1 = time.time()
-        subprocess.run(self._get_newstack(),
-                       stdout=subprocess.PIPE,
-                       stderr=subprocess.STDOUT)
-        t2 = time.time()
-        self.log += f'{TAB}Newstack took {t2 - t1:.2f}s.\n'
+        if inputs.pp_run_stack:
+            self._create_template_newstack(meta_tilt)
+
+            t1 = time.time()
+            subprocess.run(self._get_newstack(),
+                           stdout=subprocess.PIPE,
+                           stderr=subprocess.STDOUT)
+            t2 = time.time()
+            self.log += f'{TAB}Newstack took {t2 - t1:.2f}s.\n'
+
+        elif not os.path.isfile(self.filename_stack):
+            raise FileNotFoundError(f'Stack: {self.filename_stack} is not found and pp_run_stack=0.')
 
         # Run batchruntomo and send the logs to logger.
         if inputs.pp_run_batchruntomo:
@@ -1775,10 +1815,10 @@ class Ctffind:
         stack, meta_tilt, inputs = task_from_manager
         stack_padded = f'{stack:03}'
         stack_display_nb = f'{Colors.b_b}{Colors.k}stack{stack_padded}{Colors.reset}'
-        path_stack = f'{inputs.pp_path_stacks}/tilt{stack_padded}'
-        filename_log = f"{path_stack}/{inputs.pp_set_prefix}_{stack_padded}_ctffind.log"
+        path_stack = f'{inputs.pp_path_stacks}/stack{stack_padded}'
+        filename_log = f"{path_stack}/{inputs.pp_set_prefix2add}_{stack_padded}_ctffind.log"
 
-        self.filename_output = f"{path_stack}/{inputs.pp_set_prefix}_{stack_padded}_ctffind.mrc"
+        self.filename_output = f"{path_stack}/{inputs.pp_set_prefix2add}_{stack_padded}_ctffind.mrc"
         self.log = f'Ctffind - {stack_display_nb}:\n'
         self.stdout = None
 
@@ -1906,10 +1946,6 @@ def preprocessing(inputs):
            f"{TAB}Possible nb of images per stack: {metadata_object.stacks_images_per_stack}")
     if inputs.pp_run_motioncor:
         logger(f"Starting MotionCor on GPU {', '.join([str(gpu) for gpu in inputs.pp_mc_gpu])}:")
-    else:
-        logger("MotionCor deactivated.\n"
-               f"{Colors.r}WARNING: "
-               f"'field_nb' and 'field_tilt' must match the motion corrected images.{Colors.reset}")
 
     worker = WorkerManager(metadata_object.stacks_nb, inputs)
 
@@ -1925,7 +1961,8 @@ def preprocessing(inputs):
         job2do = [tilt_number, meta_tilt, inputs]
         if inputs.pp_run_ctffind:
             worker.new_async(Ctffind, job2do)
-        worker.new_async(Stack, job2do)
+        if inputs.pp_run_stack or inputs.pp_run_batchruntomo:
+            worker.new_async(Stack, job2do)
 
     # Wrap everything up.
     worker.close()
@@ -1934,7 +1971,7 @@ def preprocessing(inputs):
 
 if __name__ == '__main__':
 
-    print(f'\n{Colors.bold}CET ToolBox{Colors.reset}\n'
+    print(f'\n{Colors.bold}CET Toolbox{Colors.reset}\n'
           f'{TAB}- From raw images to aligned stacks.\n'
           f'{TAB}- Version: {Colors.bold}{VERSION}{Colors.reset}')
 
@@ -1942,6 +1979,7 @@ if __name__ == '__main__':
     inputs_object.get_inputs()
     inputs_object.save2logfile()
     logger = Logger(inputs_object)
+    inputs_object.warnings()
 
     if inputs_object.pp_run_onthefly:
         print(f'On-the-fly processing: (Tolerated inactivity: {inputs_object.pp_otf_max_time2try}min).')
