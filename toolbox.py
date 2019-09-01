@@ -13,27 +13,27 @@ from datetime import datetime
 
 import pandas as pd
 
-VERSION = '0.12.0'
+VERSION = '0.12.1'
 
 """
 Preprocessing of CET raw images.
 From raw images, create motion corrected tilt-series and align them using eTomo.
-Developped in Peijun Zhang's lab.
+Developed in Peijun Zhang's lab.
 
 Usage:
-    python tool_preprocessing.py -h
+    python toolbox.py -h
 
 
 OVERVIEW:
     - Run Motioncor2 one tilt-series at a time. The tilt-series is parallelized across the available GPUs
       (see pp_mc_gpu and pp_mc_jobs_per_gpu). This is the main advantage of this program, as it can correct 
       an entire stack in a few seconds if you have high-end GPUs/multiple GPUs.
-    - Once the images from one tilt-series have been motion corrected, the tilt-series will be create and aligned, 
+    - Once the images from one tilt-series have been motion corrected, the stack will be create and aligned, 
       and the defocus at the tilt axis will be estimated by Ctffind.
       This step is done in parallel of the main process running MotionCor and the number of stack allowed to be
       process at the same time is set by the number of motion corrected stacks or pp_set_max_cpus (default: nb of 
       logical cores).
-    - An on-the-fly mode is available (--fly) allowing to process data while it is being acquired at the microscope.
+    - An on-the-fly mode is available (--fly) allowing to process data while it is being acquired by the microscope.
 
 RAW FILE NAMES:
     - The micrograph file names must have at least 3 information:
@@ -47,14 +47,14 @@ RAW FILE NAMES:
         -- On the other end, the tilt angles are less flexible: the extension can be removed (42, 42.00, 42.00.mrc,
            42.tif, etc.) as well as the [] decorator ([42] or [42.00].mrc). Any other digit will not be 
            handle correctly.
-    - Usually we use the following format: <prefix>_<stack_nb>_<order>_<tilt>.mrc/tif; i.e. WT_011_037_54.00.tif
+    - Usually we use the following format: <prefix>_<stack_nb>_<order>_<tilt>.mrc/tif; i.e. WT_011_037_-54.00.tif
 
 OUTPUTS:
     - pp_path_motioncor/
-        -- motioncorred images
+        -- motioncorred images: <pp_set_prefix2add>_<nb>_<tilt>.mrc
         -- MotionCor2 logs (one per stack)
     - pp_path_stacks/
-        -- tilt<nb>/
+        -- stack<nb>/
             --- <pp_set_prefix2add>_<nb>.st and eTomo outputs. (<nb> - stack number: 3 digit number padded with 
                 zeros (001, 002, etc.).
             --- Ctffind outputs.
@@ -66,6 +66,7 @@ INPUT FILE (-i, --input <input_file_name>):
       --create_input_file can extract the default parameters into an input file.
       I strongly recommend to read at least once the parameters available for the user, as it will give you
       a better idea of what is and isn't possible to do in the current version.
+    - Every input must be in the input file. Empty parameters are authorized.
   
 INTERACTIVE MODE:
     - If no argument specified when starting the program, the interactive mode is triggered.
@@ -143,7 +144,7 @@ MOTIONCOR2 - GPU IDs:
       be discarded. Only works with Nvidia devices (nvidia-smi has to be installed).
       The user can still specify the GPU ID(s), starting from 0.
       
-MOTIONCOR2 - PROCESS per GPUS:
+MOTIONCOR2 - PROCESSES per GPUS:
     - At the moment, the user has to define the number of jobs to run simultaneously within the same GPUs using
       pp_mc_job_per_gpu. This is not ideal but to make it automatic I would need to load additional third parties 
       (ex: pyCUDA). Therefore, this step is manual for now. This number mainly depends on the memory of your GPU(s)
@@ -567,7 +568,7 @@ class InputParameters:
                  '-' * 60 + '\n\n'
 
         parameters = "\n".join(f"{self.defaults[i]}={self.defaults[i + 3]}" for i in range(0, len(self.defaults), 4))
-        parameters = f"Parameters:\n{parameters}\n"
+        parameters = f"Parameters: (param=value, no whitespace, in-line comments are OK)\n{parameters}\n"
 
         with open(self.cmd_line.create_input_file, 'w') as f:
             f.write(header + parameters)
@@ -674,7 +675,7 @@ class InputParameters:
 
         # Parse
         inputs_dict = {}
-        r = re.compile(r'^\w.+=\S+')
+        r = re.compile(r'^\w.+=(\S+|\s)')
         for line in lines:
             for m in r.finditer(line):
                 key, value = m.group().split('=')
@@ -1167,13 +1168,21 @@ class WorkerManager:
 
     def __init__(self, stack2process, inputs):
         """
-        Start the pool: two child per stack but still limited to the number of logical cores.
+        Start the pool.
+        The size of the pool is set by the number of stacks that need to be processed and is limited by the number
+        of logical cores or pp_set_max_cpus. For on-the-fly processing, most of the time only one stack is send to
+        pp, therefore Stack waits for Ctffind (wait a few seconds). As such, if there is one stack, the pool will
+        be set to 2 processes to run everything in parallel.
 
         :param stack2process:   stack numbers that will be processed in this session of preprocessing.
         :param inputs:          InputParameters.
         """
-        processes = len(stack2process) * 2
-        processes = processes if processes <= inputs.pp_set_max_cpus else inputs.pp_set_max_cpus
+        processes = len(stack2process)
+        if processes > inputs.pp_set_max_cpus:
+            processes = inputs.pp_set_max_cpus
+        elif processes == 1:
+            processes = 2
+
         self.semaphore = Semaphore(processes)
         self.pool = multiprocessing.Pool(processes=processes)
         self.filename_queue = inputs.hidden_queue_filename
