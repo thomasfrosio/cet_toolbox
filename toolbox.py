@@ -27,7 +27,7 @@ Usage:
 OVERVIEW:
     - Run Motioncor2 one tilt-series at a time. The tilt-series is parallelized across the available GPUs
       (see pp_mc_gpu and pp_mc_jobs_per_gpu). This is the main advantage of this program, as it can correct 
-      an entire stack in a few seconds if you have high-end GPUs/multiple GPUs.
+      an entire stack in a few seconds if you have high-end/multiple GPUs.
     - Once the images from one tilt-series have been motion corrected, the stack will be create and aligned, 
       and the defocus at the tilt axis will be estimated by Ctffind.
       This step is done in parallel of the main process running MotionCor and the number of stack allowed to be
