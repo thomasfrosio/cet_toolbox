@@ -222,7 +222,7 @@ pp_mc_trunc//int//Frame to remove, from the last frame. From 0//0//
 pp_mc_tolerance//float//Tolerance of alignment accuracy: less than X pixel//0.5//
 pp_mc_iter//int//Iterations after which the alignment stops (if tolerance not achieved already)//10//
 pp_mc_patch//two int//After global alignment, divides the corrected frames into X*X patches on which 
-the local motion is measured//5 5//
+the local motion is measured//5,5,20//
 pp_mc_gpu//int|str//GPU IDs. Can be a list of int separated by comas (ex: 0,1,2,3) or 'auto'. These must correspond 
 to the ID displayed using nvidia-smi. If 'auto', the program will select the visible GPUs 
 that do not have any process running//auto//
@@ -1489,7 +1489,7 @@ class MotionCor:
                 '-Gpu', image[2],
                 '-Gain', inputs.pp_mc_gain,
                 '-Tol', inputs.pp_mc_tolerance,
-                '-Patch', inputs.pp_mc_iter,
+                '-Patch', inputs.pp_mc_patch,
                 '-Iter', inputs.pp_mc_iter,
                 '-FtBin', str(inputs.hidden_mc_ftbin),
                 '-PixSize', str(inputs.pp_set_pixelsize),
