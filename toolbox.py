@@ -728,7 +728,6 @@ class InputParameters:
         self.set_pixelsize()
 
         if self.pp_run_motioncor:
-            print(self.pp_run_motioncor)
             assert os.path.isdir(self.pp_path_raw), f"{head} pp_path_raw ({self.pp_path_raw}) not found."
         if self.pp_set_prefix2add == '':
             raise ValueError(f'{head} {self.pp_set_prefix2add} should not be empty.')
