@@ -188,7 +188,7 @@ from the header//header//
 pp_set_max_cpus//int//Number of processes used in parallel for creating and aligning the tilt-series. Default: 
 available logical cores//{multiprocessing.cpu_count()}//
 
-pp_path_raw//str//Path of the raw images directory//../raw//
+pp_path_raw//str//Path of the raw images directory. Only used if MotionCor2 is activated//../raw//
 pp_path_motioncor//str//Where the MotionCor outputs will go. Will be created if doesn't exist//motioncor//
 pp_path_stacks//str//Path of stacks and Ctffind outputs. Will be created if doesn't exist//stacks//
 pp_path_mdocfiles//str//Path of mdoc files. Used to create the rawtlt file. File names must be 
@@ -228,7 +228,7 @@ to the ID displayed using nvidia-smi. If 'auto', the program will select the vis
 that do not have any process running//auto//
 pp_mc_jobs_per_gpu//int//Number of MotionCor jobs per GPU. For K2 super-resolution and 1080Ti, 2-3 jobs max. 
 I recommend to try with one stack to see how many memory is allocated//3//
-pp_mc_tif//bool//If the raw images are in TIF//1//
+pp_mc_tif//bool//If the raw images are in TIF//0//
 pp_mc_gain//str//Gain reference for MotionCor2. Must have the corrected rotation and be a mrc file//nogain//
 
 pp_ctf_ctffind//str//Path of Ctffind///apps/strubi/ctf/4.1.5/ctffind//
@@ -545,7 +545,7 @@ class InputParameters:
                    f"'pp_set_field_nb', 'pp_set_field_tilt' must match the motion corrected images.{Colors.reset}\n")
         if not self.pp_run_stack and self.pp_run_batchruntomo:
             logger(f"{Colors.r}WARNING: Newstack deactivated.\n"
-                   f"Your stacks must be as followed: pp_path_stacks/stack<nb>/pp_prefix2add_<nb>.st, "
+                   f"Your stacks must be as followed: <pp_path_stacks>/stack<nb>/<pp_prefix2add>_<nb>.st, "
                    f"with <nb> being the 3 digit stack number (padded with zeros).{Colors.reset}\n")
 
     def create_input_file(self):
@@ -570,7 +570,7 @@ class InputParameters:
                  '-' * 60 + '\n\n'
 
         parameters = "\n".join(f"{self.defaults[i]}={self.defaults[i + 3]}" for i in range(0, len(self.defaults), 4))
-        parameters = f"Parameters: (param=value, no whitespace, in-line comments are OK)\n{parameters}\n"
+        parameters = f"Parameters: (param=value, no whitespace; in-line comments are OK)\n{parameters}\n"
 
         with open(self.cmd_line.create_input_file, 'w') as f:
             f.write(header + parameters)
@@ -700,11 +700,6 @@ class InputParameters:
 
         head = 'Check inputs:'
 
-        if self.pp_run_motioncor:
-            assert os.path.isdir(self.pp_path_raw), f"{head} pp_path_raw ({self.pp_path_raw}) not found."
-        if self.pp_set_prefix2add == '':
-            raise ValueError(f'{head} {self.pp_set_prefix2add} should not be empty.')
-
         # Convert to int.
         for _input in ('pp_set_field_nb',
                        'pp_set_field_tilt',
@@ -731,6 +726,12 @@ class InputParameters:
         self._check_inputs_priority()
         self._set_stack()
         self.set_pixelsize()
+
+        if self.pp_run_motioncor:
+            print(self.pp_run_motioncor)
+            assert os.path.isdir(self.pp_path_raw), f"{head} pp_path_raw ({self.pp_path_raw}) not found."
+        if self.pp_set_prefix2add == '':
+            raise ValueError(f'{head} {self.pp_set_prefix2add} should not be empty.')
 
     def _check_inputs_priority(self):
         """
@@ -1234,18 +1235,16 @@ class Metadata:
     def get_metadata(self):
         """Gather metadata and return it in one DataFrame."""
 
-        meta = self._get_raw_files()
+        meta = self._get_files()
+        meta = meta.sort_values(by='nb', axis=0, ascending=True)
 
         self.stacks_len = len(meta)
         self.stacks_nb = meta['nb'].unique()
         self.stacks_images_per_stack = ', '.join((str(i)
                                                   for i in set((len(meta[meta['nb'] == stack])
                                                                 for stack in self.stacks_nb))))
-
         # Set output file name and assign every image to one GPU.
         if self.inputs.pp_run_motioncor:
-            # Only used by MotionCor.
-            meta = meta.sort_values(by='nb', axis=0, ascending=True)
             meta['gpu'] = self._get_gpu_id()
             meta['output'] = meta.apply(
                 lambda row: f"{self.inputs.pp_path_motioncor}/"
@@ -1262,7 +1261,7 @@ class Metadata:
         with open(self.inputs.hidden_queue_filename, 'a') as f:
             f.write('\n:' + ':'.join((str(i) for i in self.stacks_nb)) + ':')
 
-    def _get_raw_files(self):
+    def _get_files(self):
         """
         Gather raw file names into a DataFrame.
         For each .mrc|.tif file, catch: raw file name, nb and tilt.
@@ -1270,12 +1269,11 @@ class Metadata:
         Some stacks can be removed (see self._clean_raw_files)
         """
         raw_files = glob(f'{self.path2catch}/{self.inputs.pp_set_prefix2look4}*.{self.extension}')
-        assert raw_files, f'Get Raw files: No {self.extension} files detected in path: {self.path2catch}.'
+        assert raw_files, f'Get files: No {self.extension} files detected in path: {self.path2catch}.'
 
         # Apply the restrictions on the stacks that should be processed
         # and extract tilt-series nb and tilt angle for each image.
         raw_files, raw_files_nb, raw_files_tilt = self._clean_raw_files(raw_files)
-        raw_files = sorted(raw_files, key=os.path.getmtime)
         if not raw_files:
             logger('Nothing to process (maybe it is already processed?).')
             exit()
