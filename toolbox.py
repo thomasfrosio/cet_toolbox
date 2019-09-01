@@ -221,8 +221,11 @@ pp_mc_throw//int//Frame to remove, from the first frame. From 0//0//
 pp_mc_trunc//int//Frame to remove, from the last frame. From 0//0//
 pp_mc_tolerance//float//Tolerance of alignment accuracy: less than X pixel//0.5//
 pp_mc_iter//int//Iterations after which the alignment stops (if tolerance not achieved already)//10//
-pp_mc_patch//two int//After global alignment, divides the corrected frames into X*X patches on which 
+pp_mc_patch//int,int(,int)//After global alignment, divides the corrected frames into X*X patches on which 
 the local motion is measured//5,5,20//
+pp_mc_group//int//Equally divide the input stack into non-overlapping sub-groups. Instead of aligning individual
+frames, the sums these sub-groups are aligned. The shifts of individual frames are then interpolated and 
+extrapolated. Recommended for low-signal movie stacks.//1//
 pp_mc_gpu//int|str//GPU IDs. Can be a list of int separated by comas (ex: 0,1,2,3) or 'auto'. These must correspond 
 to the ID displayed using nvidia-smi. If 'auto', the program will select the visible GPUs 
 that do not have any process running//auto//
@@ -411,6 +414,7 @@ class InputParameters:
         self.pp_mc_tolerance = None
         self.pp_mc_iter = None
         self.pp_mc_patch = None
+        self.pp_mc_group = None
         self.pp_mc_gpu = None
         self.pp_mc_jobs_per_gpu = None
         self.pp_mc_tif = None
@@ -1491,6 +1495,7 @@ class MotionCor:
                 '-Tol', inputs.pp_mc_tolerance,
                 '-Patch', inputs.pp_mc_patch,
                 '-Iter', inputs.pp_mc_iter,
+                '-Group', inputs.pp_mc_group,
                 '-FtBin', str(inputs.hidden_mc_ftbin),
                 '-PixSize', str(inputs.pp_set_pixelsize),
                 '-Throw', inputs.pp_mc_throw,
