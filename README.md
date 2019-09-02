@@ -52,7 +52,7 @@ On the other end, the tilt angles, at the position **pp_set_field_tilt**,  are l
   > **{prefix}**_**{stack_nb}**_*{order}*_**{tilt}.{mrc|tif}** or i.e. **WT**_**011**\_037_**-54.00.tif**
   - *{order}* is not required.
 
-**pp_path_raw** can end with '*', meaning that the movies are grouped into sub-folders (i.e. raw/stack*). This does not work for pp_path_motioncor!
+**pp_path_raw** can end with '\*', meaning that the movies are grouped into sub-folders (i.e. raw/stack*). This does not work for pp_path_motioncor!
 
 ## Outputs
 - **pp_path_motioncor**/
