@@ -18,6 +18,7 @@ TODO:   1)  Denoising (Janni or Topaz? or something simpler like what we are cur
             The toolbox will generate binned SIRT-like tomogram, so it should be enough for visualization.
         2)  Generate output graphs for alignment quality and Ctffind.
         3)  Unittest.
+        4)  Send an email to David about the tilt axis offset.
 """
 
 VERSION = '0.12.1'
