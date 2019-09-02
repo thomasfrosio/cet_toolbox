@@ -80,8 +80,8 @@ If you want to restrict the processing to some specific stacks, the toolbox allo
 ## Restrict the processing to some steps
 In any configuration, you can run the program with or without the **--fly** flag. You also have to make sure you specify the correct **pp_path_raw**/**pp_path_motioncor**, **pp_set_field_nb** and **pp_set_field_tilt**.
   - MotionCor2:
-    - If activated, **pp_path_raw must** correspond to the path with the movies you want to motion correct.
-    - If deactivated, **pp_path_raw** is *NOT* used and **pp_path_motioncor** must correspond to the path with the sums you want to use. Moreover, make use that both **pp_set_field_nb** and **pp_set_field_tilt** match the motion corrected sums (and not the raw).
+    - If activated, **pp_path_raw** must correspond to the path with the movies you want to motion correct.
+    - If deactivated, **pp_path_raw** is *NOT* used and **pp_path_motioncor** must correspond to the path with the sums you want to use. Moreover, make sure that both **pp_set_field_nb** and **pp_set_field_tilt** match the motion corrected sums (and not the raw).
   - Activate ONLY Batchruntomo:
     - If you want to use your own stacks for batchruntomo, make sure they have the correct file name format and that they are in the correct path (**pp_path_stacks**/**stack**{**nb**}/**pp_prefix2add**_{**nb**}.st, with {nb} padded :03). NB: **pp_path_motioncor**, **pp_set_field_nb** and **pp_set_field_tilt** must match the motion corrected sums.
     - For the initial tilt angles, the program will generate the rawtlt using the motion corrected sum file names or you can specify your mdocs file using **pp_path_mdocs**. You cannot use your own rawtlt files.
