@@ -21,7 +21,7 @@ TODO:   1)  Denoising (Janni or Topaz? or something simpler like what we are cur
         4)  Send an email to David about the tilt axis offset.
 """
 
-VERSION = '0.12.1'
+VERSION = '0.12.2'
 
 # The descriptor must be correctly formatted for the interactive mode and create_input_file to work.
 # Format: <param1>//<type1>//<help1>//<default1>//..//<param2>//<type2>//<help2>//<default2>
@@ -40,7 +40,8 @@ from the header//header//
 pp_set_max_cpus//int//Number of processes used in parallel for creating and aligning the tilt-series. Default: 
 available logical cores//{multiprocessing.cpu_count()}//
 
-pp_path_raw//str//Path of the raw images directory. Only used if MotionCor2 is activated//../raw//
+pp_path_raw//str//Path of the raw images directory. Only used if MotionCor2 is activated. The path can end with
+'*', meaning that the movies are grouped into sub-folders (i.e. raw/stack*)//../raw//
 pp_path_motioncor//str//Where the MotionCor outputs will go. Will be created if doesn't exist//motioncor//
 pp_path_stacks//str//Path of stacks and Ctffind outputs. Will be created if doesn't exist//stacks//
 pp_path_mdocfiles//str//Path of mdoc files. Used to create the rawtlt file. File names must be 
@@ -306,6 +307,7 @@ class InputParameters:
         self.hidden_oft_gpu = None  # See Metadata._get_gpu_id
         self.hidden_mc_ftbin = None  # See self.set_pixelsize
         self.hidden_queue_filename = 'toolbox_stack_processed.txt'
+        self.hidden_run_nb = None  # Just for warning, remember positive restriction
 
     def get_inputs(self):
         """Update the attr: using the inputs, either from interactive or from input file."""
@@ -399,6 +401,9 @@ class InputParameters:
             logger(f"{Colors.r}WARNING: Newstack deactivated.\n"
                    f"Your stacks must be as followed: <pp_path_stacks>/stack<nb>/<pp_prefix2add>_<nb>.st, "
                    f"with <nb> being the 3 digit stack number (padded with zeros).{Colors.reset}\n")
+        if self.pp_run_onthefly and self.hidden_run_nb:
+            logger(f"{Colors.r}WARNING: On-the-fly mode activated with positive restriction (--nb/pp_run_nb).\n"
+                   f"Positive restrictions are currently ignored in this mode.{Colors.reset}\n")
 
     def create_input_file(self):
         """Write an input file using the default parameters."""
@@ -579,8 +584,8 @@ class InputParameters:
         self._set_stack()
         self.set_pixelsize()
 
-        if self.pp_run_motioncor:
-            assert os.path.isdir(self.pp_path_raw), f"{head} pp_path_raw ({self.pp_path_raw}) not found."
+        if self.pp_run_motioncor and not glob(f'{self.pp_path_raw}/'):
+            raise NotADirectoryError(f"{head} pp_path_raw ({self.pp_path_raw}) not found.")
         if self.pp_set_prefix2add == '':
             raise ValueError(f'{head} {self.pp_set_prefix2add} should not be empty.')
 
@@ -617,13 +622,17 @@ class InputParameters:
         NB: When on-the-fly, self.pp_run_nb will be set to the queue.
         """
         tmp = []
-        if isinstance(self.pp_run_nb, str) and self.pp_run_nb != 'all' and not self.pp_run_onthefly:
-            try:
-                for nb in self.pp_run_nb.split(','):
-                    tmp.append(int(nb))
-            except ValueError:
-                raise ValueError("Restrict stack: pp_run_nb must be 'all' "
-                                 "or list of integers separated by comas.")
+        if isinstance(self.pp_run_nb, str) and self.pp_run_nb != 'all':
+            if not self.pp_run_onthefly:
+                try:
+                    for nb in self.pp_run_nb.split(','):
+                        tmp.append(int(nb))
+                except ValueError:
+                    raise ValueError("Restrict stack: pp_run_nb must be 'all' "
+                                     "or list of integers separated by comas.")
+            # Just for self.warning.
+            else:
+                self.hidden_run_nb = self.pp_run_nb
         self.pp_run_nb = tmp
 
     @staticmethod
@@ -890,7 +899,7 @@ class OnTheFly:
                   end='')
 
             time.sleep(self.time_between_checks)
-            self._get_raw_files()
+            self._get_files()
 
             # The goal is to identify the tilt-series that are finished and register them in this list.
             self.queue = []
@@ -951,18 +960,18 @@ class OnTheFly:
 
         return cleaned
 
-    def _get_raw_files_number(self, file):
+    def _get_files_number(self, file):
         filename_split = file.split('/')[-1].split('_')
         return int(''.join(i for i in filename_split[self.field_nb] if i.isdigit()))
 
-    def _get_raw_files(self):
+    def _get_files(self):
         """
         Catch the raw files in path, order them by time of writing and set the
         number of the stack.
         """
         files = sorted(glob(f'{self.path}/{self.prefix}*.{self.extension}'), key=os.path.getmtime)
         self.data = pd.DataFrame(dict(raw=files))
-        self.data['nb'] = self.data['raw'].map(self._get_raw_files_number)
+        self.data['nb'] = self.data['raw'].map(self._get_files_number)
         self.data_stacks_available = self._set_ordered(self.data['nb'])
 
     def _get_old_stacks(self):
@@ -1841,6 +1850,11 @@ if __name__ == '__main__':
     inputs_object.save2logfile()
     logger = Logger(inputs_object)
     inputs_object.warnings()
+
+    print(f'MotionCor2:   {inputs_object.pp_run_motioncor}\n'
+          f'Ctffind:      {inputs_object.pp_run_ctffind}\n'
+          f'Newstack:     {inputs_object.pp_run_stack}\n'
+          f'Batchruntomo: {inputs_object.pp_run_batchruntomo}\n')
 
     if inputs_object.pp_run_onthefly:
         print(f'On-the-fly processing: (Tolerated inactivity: {inputs_object.pp_otf_max_time2try}min).')
