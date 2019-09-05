@@ -21,7 +21,7 @@ TODO:   1)  Denoising (Janni or Topaz? or something simpler like what we are cur
         4)  Send an email to David about the tilt axis offset.
 """
 
-VERSION = '0.12.2'
+VERSION = '0.12.3'
 
 # The descriptor must be correctly formatted for the interactive mode and create_input_file to work.
 # Format: <param1>//<type1>//<help1>//<default1>//..//<param2>//<type2>//<help2>//<default2>
@@ -66,7 +66,7 @@ pp_otf_max_time2try//float//Tolerated time (min) of inactivity//20//
 pp_mc_motioncor//str//Path of MotionCor2 program//
 /apps/strubi/motioncorr/2-1.1.0-gcc5.4.0-cuda8.0-sm61/MotionCor2//
 pp_mc_desired_pixelsize//float|str//Desired pixel size. If lower than current pixel size, Fourier cropping 
-will be done by MotionCor2. If 'current': no Ftbin applied, If 'header_x2': Ftbin=2//header_x2//
+will be done by MotionCor2. If 'current': no Ftbin applied, If 'ps_x2': Ftbin=2//ps_x2//
 pp_mc_throw//int//Frame to remove, from the first frame. From 0//0//
 pp_mc_trunc//int//Frame to remove, from the last frame. From 0//0//
 pp_mc_tolerance//float//Tolerance of alignment accuracy: less than X pixel//0.5//
@@ -354,7 +354,7 @@ class InputParameters:
 
         If meta = None, convert current and desired pixel sizes to floats if possible.
         If meta = DataFrame, extract the current pixel size from header, adjust the desired
-            pixel size if necessary ('current' or 'header_x2').
+            pixel size if necessary ('current' or 'ps_x2').
 
         In any case, try to compute hidden_mc_ftbin.
         """
@@ -362,10 +362,9 @@ class InputParameters:
             # pp_set_pixelsize can only be a float or 'header'.
             # In the later, extract pixel size from header.
             self.pp_set_pixelsize = self._get_pixel_size_from_meta(meta)
-            self._set_desired_pixelsize()
 
+        # First call has to go here.
         else:
-            # Set current pixel size.
             if self.pp_set_pixelsize != 'header':
                 try:
                     self.pp_set_pixelsize = float(self.pp_set_pixelsize)
@@ -373,14 +372,14 @@ class InputParameters:
                     raise ValueError(f"Pixel: 'pp_set_pixelsize' should be a float or 'header'.")
 
             # Set desired pixel size.
-            if self.pp_mc_desired_pixelsize not in ('header_x2', 'current'):
+            if self.pp_mc_desired_pixelsize not in ('ps_x2', 'current'):
                 try:
                     self.pp_mc_desired_pixelsize = float(self.pp_mc_desired_pixelsize)
                 except ValueError:
                     raise ValueError(
-                        f"Pixel: 'pp_mc_desired_pixelsize' should be a float or 'current' or 'header_x2'.")
+                        f"Pixel: 'pp_mc_desired_pixelsize' should be a float or 'current' or 'ps_x2'.")
 
-        # Try to compute hidden_mc_ftbin.
+        self._set_desired_pixelsize()
         self._set_ftbin()
 
     def save2logfile(self):
@@ -681,13 +680,14 @@ class InputParameters:
     def _set_desired_pixelsize(self):
         """If the desired pixel size rely on the current pixel size, update it."""
 
-        if not self.pp_run_motioncor:
-            self.pp_mc_desired_pixelsize = self.pp_set_pixelsize
-        else:
-            if self.pp_mc_desired_pixelsize == 'header_x2':
-                self.pp_mc_desired_pixelsize = self.pp_set_pixelsize * 2
-            elif self.pp_mc_desired_pixelsize == 'current':
+        if not isinstance(self.pp_set_pixelsize, str):
+            if not self.pp_run_motioncor:
                 self.pp_mc_desired_pixelsize = self.pp_set_pixelsize
+            else:
+                if self.pp_mc_desired_pixelsize == 'ps_x2':
+                    self.pp_mc_desired_pixelsize = self.pp_set_pixelsize * 2
+                elif self.pp_mc_desired_pixelsize == 'current':
+                    self.pp_mc_desired_pixelsize = self.pp_set_pixelsize
 
     def _set_ftbin(self):
         """Compute Ftbin for MotionCor2."""
