@@ -1305,7 +1305,7 @@ class MotionCor:
                    f"{TAB}{len(meta_tilt)} images failed. It may be because no memory was available "
                    f"on the device. You may stop the program and decrease pp_mc_jobs_per_gpu.{Colors.reset}\n"
                    f"{TAB}Reprocessing the missing images one at a time... ", nl=True)
-            self._run_motioncor(meta_tilt, inputs)
+            self._run_motioncor(inputs, meta_tilt)
 
         # Save output.
         self._save2logfile()
