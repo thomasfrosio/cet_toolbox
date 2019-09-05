@@ -340,8 +340,8 @@ class InputParameters:
         """
         if self.pp_brt_bin_coarse == 'auto':
             try:
-                self.pp_brt_bin_coarse = int(12.5 // (float(self.pp_brt_gold_size)
-                                                      * (self.pp_mc_desired_pixelsize / 10)))
+                self.pp_brt_bin_coarse = round(float(self.pp_brt_gold_size) /
+                                               (12.5 * (self.pp_mc_desired_pixelsize / 10)))
             except TypeError:
                 raise
 
@@ -1304,7 +1304,7 @@ class MotionCor:
             logger(f"\n{Colors.r}MotionCor WARNING:\n"
                    f"{TAB}{len(meta_tilt)} images failed. It may be because no memory was available "
                    f"on the device. You may stop the program and decrease pp_mc_jobs_per_gpu.{Colors.reset}\n"
-                   f"{TAB}Reprocessing the missing images on at a time... ", nl=True)
+                   f"{TAB}Reprocessing the missing images one at a time... ", nl=True)
             self._run_motioncor(meta_tilt, inputs)
 
         # Save output.
