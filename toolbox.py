@@ -16,12 +16,14 @@ import pandas as pd
 """
 TODO:   1)  Denoising (Janni or Topaz? or something simpler like what we are currently doing in MATLAB...)
             The toolbox will generate binned SIRT-like tomogram, so it should be enough for visualization.
+            Alister is working on a denoising solution.
         2)  Generate output graphs for alignment quality and Ctffind.
         3)  Unittest.
         4)  Send an email to David about the tilt axis offset.
+        5)  Create a advanced mode to reduce the number of parameters.
 """
 
-VERSION = '0.12.3'
+VERSION = '0.12.5'
 
 # The descriptor must be correctly formatted for the interactive mode and create_input_file to work.
 # Format: <param1>//<type1>//<help1>//<default1>//..//<param2>//<type2>//<help2>//<default2>
@@ -81,6 +83,8 @@ to the ID displayed using nvidia-smi. If 'auto', the program will select the vis
 that do not have any process running//auto//
 pp_mc_jobs_per_gpu//int//Number of MotionCor jobs per GPU. For K2 super-resolution and 1080Ti, 2-3 jobs max. 
 I recommend to try with one stack to see how many memory is allocated//3//
+pp_mc_gpu_mem_usage//float//GPU memory allocated to buffer the movie stacks. For multiple MotionCor2 jobs in one
+GPU, it is recommended to set it to 0. Default=0.5//0.5//
 pp_mc_tif//bool//If the raw images are in TIF//0//
 pp_mc_gain//str//Gain reference for MotionCor2. Must have the corrected rotation and be a mrc file//nogain//
 
@@ -237,12 +241,12 @@ class InputParameters:
         self.cmd_line = self._get_command_line()
         self.defaults = defaults.replace('\n', '').split('//')
 
-        # This is a dead end.
+        # this is a dead end
         if self.cmd_line.create_input_file:
             self.create_input_file()
 
-        # Set attributes to None for now.
-        # self.get_inputs will update them using interactive mode or input file.
+        # set attributes to None for now
+        # self.get_inputs will update them using interactive mode or input file
         self.pp_set_prefix2look4 = None
         self.pp_set_prefix2add = None
         self.pp_set_field_nb = None
@@ -271,6 +275,7 @@ class InputParameters:
         self.pp_mc_jobs_per_gpu = None
         self.pp_mc_tif = None
         self.pp_mc_gain = None
+        self.pp_mc_gpu_mem_usage = None
 
         self.pp_ctf_ctffind = None
         self.pp_ctf_voltage = None
@@ -302,21 +307,19 @@ class InputParameters:
         self.pp_run_batchruntomo = None
         self.pp_run_onthefly = None
         self.pp_run_overwrite = None
-        self.pp_run_nb = None  # See self._set_stack
+        self.pp_run_nb = None  # see self._set_stack
 
-        self.hidden_oft_gpu = None  # See Metadata._get_gpu_id
-        self.hidden_mc_ftbin = None  # See self.set_pixelsize
+        self.hidden_oft_gpu = None  # see Metadata._get_gpu_id
+        self.hidden_mc_ftbin = None  # see self.set_pixelsize
         self.hidden_queue_filename = 'toolbox_stack_processed.txt'
-        self.hidden_run_nb = None  # Just for warning, remember positive restriction
+        self.hidden_run_nb = None  # just for warning, remember positive restriction
 
     def get_inputs(self):
         """Update the attr: using the inputs, either from interactive or from input file."""
-
-        # At this point, the processing is likely to start so check IMOD.
         self.check_dependency('imod')
 
-        # Catch the parameters from an input file.
-        # user_inputs is a dict.
+        # catch the parameters from an input file
+        # user_inputs is a dict
         if self.cmd_line.input:
             print(f'{TAB}- Mode: Using inputs from {Colors.bold}{self.cmd_line.input}{Colors.reset}\n')
             user_inputs = self._get_inputs_from_file()
@@ -325,12 +328,11 @@ class InputParameters:
             interactor = InputInteractive(self.defaults)
             user_inputs = interactor.get_inputs()
 
-        # Update the attributes with collected inputs.
+        # update the attributes with collected inputs
         for key, value in user_inputs.items():
             setattr(self, key, value)
         self.hidden_oft_gpu = self.pp_mc_gpu
 
-        # Check inputs. Change the type of some attributes.
         self._check_inputs()
 
     def set_bin_coarsed(self):
@@ -363,7 +365,7 @@ class InputParameters:
             # In the later, extract pixel size from header.
             self.pp_set_pixelsize = self._get_pixel_size_from_meta(meta)
 
-        # First call has to go here.
+        # first call has to go here
         else:
             if self.pp_set_pixelsize != 'header':
                 try:
@@ -371,7 +373,7 @@ class InputParameters:
                 except ValueError:
                     raise ValueError(f"Pixel: 'pp_set_pixelsize' should be a float or 'header'.")
 
-            # Set desired pixel size.
+            # set desired pixel size
             if self.pp_mc_desired_pixelsize not in ('ps_x2', 'current'):
                 try:
                     self.pp_mc_desired_pixelsize = float(self.pp_mc_desired_pixelsize)
@@ -384,7 +386,6 @@ class InputParameters:
 
     def save2logfile(self):
         """Save the inputs to the log file."""
-
         inputs = '\n\t'.join(f'{key}: {value}' for key, value in self.__dict__.items() if 'pp_' in key)
         with open(self.pp_path_logfile, 'a') as log_file:
             log_file.write(f'Toobox version {VERSION}.\n'
@@ -392,7 +393,6 @@ class InputParameters:
 
     def warnings(self):
         """Warn the user about specific run settings."""
-
         if not self.pp_run_motioncor:
             logger(f"{Colors.r}WARNING: MotionCor deactivated.\n"
                    f"'pp_set_field_nb', 'pp_set_field_tilt' must match the motion corrected images.{Colors.reset}\n")
@@ -406,8 +406,7 @@ class InputParameters:
 
     def create_input_file(self):
         """Write an input file using the default parameters."""
-
-        # Format the descriptor.
+        # format the descriptor
         formatted_description = ''
         for i in range(0, len(self.defaults), 4):
             left = f'{self.defaults[i]} ({self.defaults[i + 1]}) : '
@@ -417,7 +416,7 @@ class InputParameters:
                 right = f'{self.defaults[i + 2]}'
             formatted_description += f'{left:>40}{right}\n'
 
-        # Create the header
+        # create the header
         date_created = "Created: {0:%d-%b-%Y} | {0:%H:%M}".format(datetime.now())
         header = '-' * 60 + \
                  f'\nToolbox version {VERSION}.' + \
@@ -438,7 +437,6 @@ class InputParameters:
     @staticmethod
     def check_dependency(program):
         """If program (str) is not in PATH, raise OSError."""
-
         if not any(os.access(os.path.join(path, program), os.X_OK)
                    for path in os.environ["PATH"].split(os.pathsep)):
             raise OSError(f'Check dependency: {program} needs to be in PATH...\n')
@@ -446,7 +444,6 @@ class InputParameters:
     @staticmethod
     def _format_input_description(description, left, right):
         """Wrap string within left and right padding."""
-
         final_string = ''
         string = ''
         for i in description.split():
@@ -467,11 +464,10 @@ class InputParameters:
     @staticmethod
     def _get_command_line():
         """Parse the command line."""
-
         parser = argparse.ArgumentParser(prog='CET Toolbox',
                                          description='Program helping with CET data pre-processing.')
 
-        # create_input_file OR parse input file.
+        # create_input_file OR parse input file
         parser_group = parser.add_mutually_exclusive_group()
         parser_group.add_argument('-i', '--input',
                                   nargs='?',
@@ -484,7 +480,7 @@ class InputParameters:
                                   type=str,
                                   help='Create an input file from the default parameters.')
 
-        # Overwrite inputs from command line.
+        # overwrite inputs from command line
         parser.add_argument('--fly',
                             nargs='?',
                             const=True,
@@ -507,7 +503,6 @@ class InputParameters:
                             nargs='?',
                             help='Batchruntomo adoc file.')
 
-        # Version
         parser.add_argument('--version',
                             action='version',
                             version=f'%(prog)s {VERSION}',
@@ -517,22 +512,21 @@ class InputParameters:
 
     def _get_inputs_from_file(self):
         """Extract the inputs from an input file."""
-
         try:
             with open(self.cmd_line.input, 'r') as f:
                 lines = f.readlines()
         except IOError as err:
             raise IOError(f'Collect inputs from file: {err}')
 
-        # Remove the header to be sure it is not going to be parsed.
+        # Remove the header to be sure it is not going to be parsed
         head = 0
         for i, line in enumerate(lines):
             if '------' in line:
                 head = i
         lines = lines[head:]
 
-        # Parse.
-        # Empty parameters are accepted.
+        # parse
+        # empty parameters are accepted
         inputs_dict = {}
         r = re.compile(r'^\w.+=(\S+|\s)')
         for line in lines:
@@ -540,7 +534,7 @@ class InputParameters:
                 key, value = m.group().split('=')
                 inputs_dict[key] = value
 
-        # Extract the parameters from the defaults and check they are all in the input file.
+        # extract the parameters from the defaults and check they are all in the input file
         if inputs_dict != {}:
             parameters = self.defaults
             parameters_generator = (parameters[item] for item in range(0, len(parameters), 4))
@@ -553,10 +547,9 @@ class InputParameters:
 
     def _check_inputs(self):
         """Few sanity checks and format required inputs."""
-
         head = 'Check inputs:'
 
-        # Convert to int.
+        # convert to int
         for _input in ('pp_set_field_nb',
                        'pp_set_field_tilt',
                        'pp_mc_jobs_per_gpu',
@@ -566,7 +559,7 @@ class InputParameters:
             except ValueError:
                 raise ValueError(f"{head} {_input} must be an integer.")
 
-        # Convert to bool.
+        # convert to bool
         for _input in ('pp_run_motioncor',
                        'pp_run_ctffind',
                        'pp_run_stack',
@@ -629,7 +622,7 @@ class InputParameters:
                 except ValueError:
                     raise ValueError("Restrict stack: pp_run_nb must be 'all' "
                                      "or list of integers separated by comas.")
-            # Just for self.warning.
+            # just for self.warning
             else:
                 self.hidden_run_nb = self.pp_run_nb
         self.pp_run_nb = tmp
@@ -637,7 +630,6 @@ class InputParameters:
     @staticmethod
     def _get_pixelsize_header(mrc_filename):
         """Parse the header and compute the pixel size."""
-
         size = 4
         offsets = [0, 4, 8, 40, 44, 48]
         structs = '3i3f'
@@ -651,7 +643,7 @@ class InputParameters:
         [nx, ny, nz,
          cellax, cellay, cellaz] = struct.unpack(structs, header)
 
-        # Make sure the pixel size is the same for each axis.
+        # make sure the pixel size is the same for each axis
         px, py, pz = cellax / nx, cellay / ny, cellaz / nz
         if math.isclose(px, py, rel_tol=1e-4) and math.isclose(px, pz, rel_tol=1e-4):
             return px
@@ -679,7 +671,6 @@ class InputParameters:
 
     def _set_desired_pixelsize(self):
         """If the desired pixel size rely on the current pixel size, update it."""
-
         if not isinstance(self.pp_set_pixelsize, str):
             if not self.pp_run_motioncor:
                 self.pp_mc_desired_pixelsize = self.pp_set_pixelsize
@@ -713,7 +704,7 @@ class InputInteractive:
 
         TODO: Live input checks?
         """
-        # Extract the parameters from the defaults.
+        # extract the parameters from the defaults
         parameters = self.defaults
         parameters_organized = [parameters[item:item + 4] for item in range(0, len(parameters), 4)]
 
@@ -824,7 +815,7 @@ class OnTheFly:
         self.extension = 'tif' if inputs.pp_mc_tif and inputs.pp_run_motioncor else 'mrc'
         self.field_nb = inputs.pp_set_field_nb
 
-        # Refresh
+        # refresh
         self.time_between_checks = 5
 
         # Queue of stacks. Processed stacks are saved and not reprocessed.
@@ -832,7 +823,7 @@ class OnTheFly:
         self.processed = self._exclude_queue() if not inputs.pp_run_overwrite else []
         self.queue = None
 
-        # Tolerate some inactivity.
+        # tolerate some inactivity
         self.buffer = 0
         try:
             self.buffer_tolerance_sec = int(inputs.pp_otf_max_time2try) * 60
@@ -840,12 +831,12 @@ class OnTheFly:
             raise ValueError(f'On-the-fly: {err}')
         self.buffer_tolerance = self.buffer_tolerance_sec // self.time_between_checks
 
-        # Catch the available raw files.
+        # catch the available raw files
         self.data = None
         self.data_stacks_available = None
         self.data_current = None
 
-        # Compute the current stack.
+        # compute the current stack
         self.stack_current = None
         self.len_current_stack_previous_check = 0
         self.len_current_stack = 0
@@ -901,40 +892,42 @@ class OnTheFly:
             time.sleep(self.time_between_checks)
             self._get_files()
 
-            # The goal is to identify the tilt-series that are finished and register them in this list.
+            # the goal is to identify the tilt-series that are finished and register them in this list
             self.queue = []
 
-            # Split the files into the current stack and old stacks if any.
+            # split the files into the current stack and old stacks if any
             len_avail = len(self.data_stacks_available)
             if len_avail == 1:
                 self.stack_current = self.data_stacks_available[0]
             elif len_avail > 1:
                 self._get_old_stacks()
             else:
+                self.buffer += 1
+                if self.buffer == self.buffer_tolerance:
+                    running = False
                 continue
 
-            # It is more tricky to know what to do with the last stack.
+            # it is more tricky to know what to do with the last stack
             self._analyse_last_stack()
 
-            # If the buffer reaches the limit, it means nothing is happening for too long, so stop.
+            # if the buffer reaches the limit, it means nothing is happening for too long, so stop
             if self.buffer == self.buffer_tolerance:
                 if self.stack_current not in self.processed:
                     self.queue.append(self.stack_current)
                     self.processed.append(self.stack_current)
                 running = False
 
-            # Send to preprocessing.
+            # send to preprocessing
             if self.queue:
                 print('\n')
                 inputs.pp_run_nb = self.queue
                 preprocessing(inputs)
 
-            # Reset the length if necessary.
+            # reset the length if necessary
             self.len_current_stack_previous_check = self.len_current_stack
 
     def _exclude_queue(self):
         """Extract the stacks already processed from inputs.pp_hidden_queue_filename."""
-
         try:
             with open(self.queue_filename, 'r') as f:
                 remove_stack = f.readlines()
@@ -946,13 +939,12 @@ class OnTheFly:
                 return list2remove
 
         except IOError:
-            # First time running.
+            # first time running
             return []
 
     @staticmethod
     def _set_ordered(iterable2clean):
         """Remove redundant values while preserving the order."""
-
         cleaned = []
         for item in iterable2clean:
             if item not in cleaned:
@@ -1094,7 +1086,6 @@ class Metadata:
 
     def get_metadata(self):
         """Gather metadata and return it in one DataFrame."""
-
         meta = self._get_files()
         meta = meta.sort_values(by='nb', axis=0, ascending=True)
 
@@ -1103,7 +1094,7 @@ class Metadata:
         self.stacks_images_per_stack = ', '.join((str(i)
                                                   for i in set((len(meta[meta['nb'] == stack])
                                                                 for stack in self.stacks_nb))))
-        # Set output file name and assign every image to one GPU.
+        # set output file name and assign every image to one GPU
         if self.inputs.pp_run_motioncor:
             meta['gpu'] = self._get_gpu_id()
             meta['output'] = meta.apply(
@@ -1117,7 +1108,6 @@ class Metadata:
 
     def save_processed_stack(self):
         """Save in a text file the stacks that were processed."""
-
         with open(self.inputs.hidden_queue_filename, 'a') as f:
             f.write('\n:' + ':'.join((str(i) for i in self.stacks_nb)) + ':')
 
@@ -1168,13 +1158,13 @@ class Metadata:
         else:
             stack2remove = self._exclude_stacks2remove()
 
-        # Start cleaning.
+        # start cleaning
         raw_files_cleaned, raw_files_cleaned_nb, raw_files_cleaned_tilt = [], [], []
         for file in raw_files:
             filename_split = file.split('/')[-1].split('_')
             stack_nb = int(''.join(i for i in filename_split[self.inputs.pp_set_field_nb] if i.isdigit()))
 
-            # First check that the stack was not processed already.
+            # first check that the stack was not processed already
             if stack_nb in stack2remove:
                 continue
 
@@ -1196,7 +1186,6 @@ class Metadata:
 
     def _exclude_stacks2remove(self):
         """Catch every stack that was already processed (saved in inputs.hidden_queue_filename)."""
-
         stack2remove = []
         try:
             with open(self.inputs.hidden_queue_filename, 'r') as f:
@@ -1209,7 +1198,7 @@ class Metadata:
 
             return stack2remove
 
-        # First time running.
+        # first time running
         except IOError:
             return stack2remove
 
@@ -1225,7 +1214,7 @@ class Metadata:
             # Thus it needs to remember the original input.
             self.inputs.pp_mc_gpu = self.inputs.hidden_oft_gpu
 
-        # Catch GPU
+        # catch GPU
         if self.inputs.pp_mc_gpu == 'auto':
             self.inputs.pp_mc_gpu = self._get_gpu_from_nvidia_smi()
         else:
@@ -1234,7 +1223,7 @@ class Metadata:
             except ValueError:
                 raise ValueError("Get GPU: pp_mc_gpu must be an (list of) integers or 'auto'")
 
-        # Map to DataFrame
+        # map to DataFrame
         mc_gpu = [str(i) for i in self.inputs.pp_mc_gpu] * math.ceil(self.stacks_len / len(self.inputs.pp_mc_gpu))
         len_diff = len(mc_gpu) - self.stacks_len
         if len_diff:
@@ -1254,7 +1243,7 @@ class Metadata:
         nv_processes = subprocess.run(['nvidia-smi', '--query-compute-apps=gpu_uuid', '--format=csv'],
                                       stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='ascii')
 
-        # Catch the visible GPUs.
+        # catch the visible GPUs
         if nv_uuid.returncode is not 0 or nv_processes.returncode is not 0:
             raise AssertionError(f'Get GPU: nvidia-smi returned an error: {nv_uuid.stderr}')
         else:
@@ -1267,7 +1256,7 @@ class Metadata:
                 gpu_id = gpu[id_idx + 4:id_idx + 6].strip(' ').strip(':')
                 gpu_uuid = gpu[uuid_idx + 5:-1].strip(' ')
 
-                # Discard the GPU hosting a process.
+                # discard the GPU hosting a process
                 if gpu_uuid not in nv_processes.stdout.split('\n'):
                     visible_gpu.append(gpu_id)
 
@@ -1307,7 +1296,7 @@ class MotionCor:
                    f"{TAB}Reprocessing the missing images one at a time... ", nl=True)
             self._run_motioncor(inputs, meta_tilt)
 
-        # Save output.
+        # save output
         self._save2logfile()
         logger(f'MotionCor2: stack{self.stack_padded} processed.', stdout=False)
 
@@ -1323,12 +1312,12 @@ class MotionCor:
         jobs = (subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
                 for cmd in mc_commands)
 
-        # Run subprocess by chunks of GPU.
+        # run subprocess by chunks of GPU
         runs, run = len(mc_commands), 0
         header = f'{Colors.b_b}{Colors.k}stack{self.stack_padded}{Colors.reset}'
         self._update_progress(runs, run, head=header)
         for job in self._yield_chunks(jobs, len(inputs.pp_mc_gpu) * job_per_gpu):
-            # From the moment the next line is read, every process in job are spawned.
+            # from the moment the next line is read, every process in job are spawned
             for process in [i for i in job]:
                 self.log.append(process.communicate()[0].decode('UTF-8'))
                 self._update_progress(runs, run, head=header, done='Motion corrected.')
@@ -1345,6 +1334,7 @@ class MotionCor:
                 f'-{input_motioncor}', image[0],
                 '-OutMrc', image[1],
                 '-Gpu', image[2],
+                '-GpuMemUsage', inputs.pp_mc_gpu_mem_usage,
                 '-Gain', inputs.pp_mc_gain,
                 '-Tol', inputs.pp_mc_tolerance,
                 '-Patch', inputs.pp_mc_patch,
@@ -1428,7 +1418,7 @@ class Stack:
         meta_tilt = meta_tilt.sort_values(by='tilt', axis=0, ascending=True)
         self._create_rawtlt(meta_tilt, inputs.pp_path_mdocfiles)
 
-        # Run newstack.
+        # run newstack
         if inputs.pp_run_stack:
             self._create_template_newstack(meta_tilt)
 
@@ -1442,7 +1432,7 @@ class Stack:
         elif not os.path.isfile(self.filename_stack):
             raise FileNotFoundError(f'Stack: {self.filename_stack} is not found and pp_run_stack=0.')
 
-        # Run batchruntomo and send the logs to logger.
+        # run batchruntomo and send the logs to logger
         if inputs.pp_run_batchruntomo:
             batchruntomo = Batchruntomo(inputs,
                                         self.filename_stack,
@@ -1487,7 +1477,7 @@ class Stack:
             rawtlt = '\n'.join((str(i) for i in rawtlt)) + '\n'
             self.log += f'{TAB}Mdoc file: True.\n'
 
-        # No mdoc, more than one mdoc or mdoc with missing images.
+        # no mdoc, more than one mdoc or mdoc with missing images
         except ValueError:
             self.log += f'{TAB}Mdoc file: False.\n'
             rawtlt = '\n'.join(meta_tilt['tilt'].astype(str)) + '\n'
@@ -1519,7 +1509,7 @@ class Batchruntomo:
 
         self._create_adoc(inputs)
 
-        # First run.
+        # first run
         batchruntomo = subprocess.run(self._get_batchruntomo(inputs),
                                       stdout=subprocess.PIPE,
                                       encoding='ascii')
@@ -1530,25 +1520,24 @@ class Batchruntomo:
         # up to tiltalign in order to have align.com and then modify align.com and restart from there.
         if 'ABORT SET:' in self.stdout:
             self._get_batchruntomo_log(abort=True)
+        else:
+            # change the threshold in align.com
+            with open(f'{self.path}/align.com', 'r') as align:
+                f = align.read().replace('ResidualReportCriterion\t3', 'ResidualReportCriterion\t1')
+            with open(f'{self.path}/align.com', 'w') as corrected_align:
+                corrected_align.write(f)
 
-        # Change the threshold in align.com
-        with open(f'{self.path}/align.com', 'r') as align:
-            f = align.read().replace('ResidualReportCriterion\t3', 'ResidualReportCriterion\t1')
-        with open(f'{self.path}/align.com', 'w') as corrected_align:
-            corrected_align.write(f)
-
-        # Second run with correct report threshold...
-        batchruntomo = subprocess.run(self._get_batchruntomo(inputs),
-                                      stdout=subprocess.PIPE,
-                                      encoding='ascii')
-        self.stdout += batchruntomo.stdout
-        self._get_batchruntomo_log()
+            # second run with correct report threshold
+            batchruntomo = subprocess.run(self._get_batchruntomo(inputs),
+                                          stdout=subprocess.PIPE,
+                                          encoding='ascii')
+            self.stdout += batchruntomo.stdout
+            self._get_batchruntomo_log()
 
     def _create_adoc(self, inputs):
         """Create an adoc file from default adoc or using specified adoc file directly."""
-
         if inputs.pp_brt_adoc == 'default':
-            # Compute bin coarsed using desired pixel size.
+            # compute bin coarsed using desired pixel size
             inputs.set_bin_coarsed()
 
             adoc_file = adoc
@@ -1597,7 +1586,7 @@ class Batchruntomo:
         self.log += self._get_batchruntomo_log_erase(f'{self.path}/eraser.log')
 
         # stats.log, cliphist.log and track.log
-        # Easier to catch the info directly in main log.
+        # easier to catch the info directly in main log
         for line in self.stdout:
             if 'Views with locally extreme values:' in line:
                 self.log += f'{TAB * 2}- Stats: {line}.\n'
@@ -1622,7 +1611,7 @@ class Batchruntomo:
 
     @staticmethod
     def _get_batchruntomo_log_erase(log):
-        # Catch number of pixel replaced and if program succeeded.
+        # catch number of pixel replaced and if program succeeded
         exit_status = 'Not found'
         try:
             with open(log, 'r') as file:
@@ -1696,7 +1685,7 @@ class Ctffind:
         # Get the image closest to 0. Only this one will be used.
         image = meta_tilt.loc[meta_tilt['tilt'].abs().idxmin(axis=0)]
 
-        # Get ctffind command and run.
+        # get ctffind command and run
         os.makedirs(path_stack, exist_ok=True)
 
         ctf_command, ctf_input_string = self._get_ctffind(image, inputs)
@@ -1712,11 +1701,11 @@ class Ctffind:
         else:
             self.stdout = ctffind_run.stdout
 
-        # Save stdout.
+        # save stdout
         with open(filename_log, 'w') as f:
             f.write(self.stdout)
 
-        # Send the logs back to main.
+        # send the logs back to main
         self._get_ctffind_log()
         logger(self.log, nl=True)
 
@@ -1777,17 +1766,14 @@ class Logger:
         :param stdout:  print or not.
         :param nl:      Add a newline at the beginning of the message.
         """
-        self.lock.acquire()
+        with self.lock:
+            nl = '\n' if nl else ''
+            message = f'{nl}{Colors.underline}{datetime.now():%d%b%Y-%H:%M:%S}{Colors.reset} - {log}'
 
-        nl = '\n' if nl else ''
-        message = f'{nl}{Colors.underline}{datetime.now():%d%b%Y-%H:%M:%S}{Colors.reset} - {log}'
-
-        if stdout:
-            print(message)
-        with open(self.filename_log, 'a') as f:
-            f.write(message + '\n')
-
-        self.lock.release()
+            if stdout:
+                print(message)
+            with open(self.filename_log, 'a') as f:
+                f.write(message + '\n')
 
 
 def preprocessing(inputs):
@@ -1797,7 +1783,7 @@ def preprocessing(inputs):
 
     :param inputs:      InputParameters
     """
-    # Set output directories.
+    # set output directories
     os.makedirs(inputs.pp_path_motioncor, exist_ok=True)
     os.makedirs(inputs.pp_path_stacks, exist_ok=True)
 
@@ -1806,10 +1792,10 @@ def preprocessing(inputs):
     metadata_object = Metadata(inputs)
     meta = metadata_object.get_metadata()
 
-    # Once the metadata is loaded, set its pixel size and calculate Ftbin.
+    # once the metadata is loaded, set its pixel size and calculate Ftbin
     inputs.set_pixelsize(meta)
 
-    # Some stdout.
+    # some stdout
     logger(f"Collecting data:\n"
            f"{TAB}Raw images: {metadata_object.stacks_len}\n"
            f"{TAB}Tilt-series: {metadata_object.stacks_nb}\n"
@@ -1819,22 +1805,22 @@ def preprocessing(inputs):
 
     worker = WorkerManager(metadata_object.stacks_nb, inputs)
 
-    # Compute sequentially each tilt-series.
-    # First run MotionCor, then stack and ctffind, both in parallel.
+    # compute sequentially each tilt-series
+    # first run MotionCor, then stack and ctffind, both in parallel
     for tilt_number in metadata_object.stacks_nb:
         meta_tilt = meta[meta['nb'] == tilt_number]
 
         if inputs.pp_run_motioncor:
             MotionCor(inputs, meta_tilt, tilt_number)
 
-        # Communicate the job to workers.
+        # communicate the job to workers
         job2do = [tilt_number, meta_tilt, inputs]
         if inputs.pp_run_ctffind:
             worker.new_async(Ctffind, job2do)
         if inputs.pp_run_stack or inputs.pp_run_batchruntomo:
             worker.new_async(Stack, job2do)
 
-    # Wrap everything up.
+    # wrap everything up
     worker.close()
     metadata_object.save_processed_stack()
 

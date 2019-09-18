@@ -26,9 +26,9 @@ python toolbox.py -h
 ```
 
 ## Overview
-Run Motioncor2 one tilt-series at a time. The tilt-series is parallelized across the available GPUs (see **pp_mc_gpu** and **pp_mc_jobs_per_gpu**). This is the main advantage of this program, as it can correct an entire stack in a few seconds if you have high-end/multiple GPUs.
+Run Motioncor2 one tilt-series at a time. The tilt-series are parallelized across the available GPUs (see **pp_mc_gpu** and **pp_mc_jobs_per_gpu**). This is the main advantage of this program, as it can correct an entire stack in a few seconds if one has high-end/multiple GPUs.
 
-Once the images from one tilt-series have been motion corrected, the stack will be create and aligned, and the defocus at the tilt axis will be estimated by Ctffind. This step is done in parallel of the main process running MotionCor2 and the number of stack allowed to be process at the same time is set by the number of motion corrected stacks or **pp_set_max_cpus** (default: nb of logical cores).
+Once the images from one tilt-series have been motion corrected, the stack will be created and aligned, and the defocus at the tilt axis will be estimated by Ctffind. This step is done in parallel of the main process running MotionCor2 and the number of stack allowed to be process at the same time is set by the number of motion corrected stacks or **pp_set_max_cpus** (default: nb of logical cores).
 - An on-the-fly mode is available (**--fly** or **pp_run_onthefly**) allowing to process data while it is being acquired by the microscope.
 
 ## Requirements
@@ -52,7 +52,7 @@ On the other end, the tilt angles, at the position **pp_set_field_tilt**,  are l
   > **{prefix}**_**{stack_nb}**_*{order}*_**{tilt}.{mrc|tif}** or i.e. **WT**_**011**\_037_**-54.00.tif**
   - *{order}* is not required.
 
-**pp_path_raw** can end with '\*', meaning that the movies are grouped into sub-folders (i.e. raw/stack*). This does not work for **pp_path_motioncor**!
+Subfolders: **pp_path_raw** can end with '\*', meaning that the movies are grouped into sub-folders (i.e. raw/stack*). This does not work for **pp_path_motioncor**!
 
 ## Outputs
 - **pp_path_motioncor**/
@@ -69,16 +69,16 @@ On the other end, the tilt angles, at the position **pp_set_field_tilt**,  are l
 ## Input file
 - The easiest way to use this program is to use an input file.
   - **--create_input_file** can extract the default parameters into an input file. I strongly recommend to read at least once the parameters available for the user, as it will give you a better idea of what is and isn't possible to do in the current version.
- - Every input must be in the input file. Empty parameters are authorized.
-  
+ - Every input must be in the input file, but empty parameters are authorized.
+
 ## Interactive mode
 - If no argument specified when starting the program, the interactive mode is triggered. It will ask you, one by one, to set the parameters. For each parameter, it gives you the parameter ID, the expected type and the default value. Answering '+' will show the description of this parameter.
-  
+
 ## Restrict the processing to some stacks
 If you want to restrict the processing to some specific stacks, the toolbox allows two type of restrictions:
   - positive: specify the stack number(s) that should only be processed using **pp_run_nb** or **--nb**. This must be an integer or list of integers (padded with zeros or not) separated by comas. Note that this parameter is ignored when the on-the-fly mode is activated.
   - negative: specify the stack number(s) that should *NOT* be processed using the toolbox_stack_processed.txt file. Every time a stack is processed, the program will register the processed stack into this file. You can also edit this file yourself (see **pp_run_overwrite**). This file can be ignored (if you want to reprocess some stacks), using **pp_run_overwrite**=1 or **--overwrite**.
-  
+
 ## Restrict the processing to some steps
 In any configuration, you can run the program with or without the **--fly** flag. You also have to make sure you specify the correct **pp_path_raw**/**pp_path_motioncor**, **pp_set_field_nb** and **pp_set_field_tilt**.
   - MotionCor2:
@@ -96,29 +96,29 @@ Briefly, you need to set 2 additional parameters:
 Careful as it will expect images to be written in order (like a microscope does). For instance, if you transfer your images to your directory in *random* order and start the program to process the stacks while there are being transferred, it will not work correctly.
 
 For a complete description, see OnTheFly.run.
-      
+
 ## Mdoc files (TiltAngle)
 Mdoc files can be used to specify the tilts for initial alignment in eTomo. The files have to follow this format: "**pp_path_mdocfiles**/*_{**stack_nb**}.mrc.mdoc". **pp_path_mdocfiles** can be modified by the user and {stack_nb} must be a number padded with zeros (3 characters), (ex: 001, 010, 100, etc.). Otherwise, the program uses the tilts from the raw image filenames.
-  
+
 ## Batchruntomo
 The tilt-series alignment is done by batchruntomo. As this toolbox was made for an emClarity workflow, by default it will generate binned SIRT-like filtered tomograms. See **pp_brt** parameters for more info. If you want to use your own adoc file, use **pp_brt_adoc** or **--adoc** {file.adoc} 
 
 If you want to run only batchruntomo (use your own stacks), make sure you follow what is mentioned in "RESTRICT THE PROCESSING TO SOME STEPS".
-  
+
 ## Parallel processing
 The toolbox creates a pool of processes to create/align asynchronously stacks (and to run Ctffind). The number of processes is set to be the number of stacks that need to be processed (limited by **pp_set_max_cpus**) and is effectively the number of tilt-series that can be processed simultaneously. By default, **pp_set_max_cpus** is set to the number of logical cores of your CPU.
 
 Each process will additionally start 4 other processes for batchruntomo (only during expensive tasks). These additional processes are entirely managed by IMOD. I set localhost:4, as this is fine for us (eBIC and STRUBI). You can modify this number (see Batchruntomo._get_batchruntomo), but 4 should be enough. Depending on your system and IMOD install, batchruntomo may not be able to use multiple cores...
-      
+
 ## Overwrite
 By default, the program will not overwrite a tilt-series. It generates a file (toolbox_stack_processed.txt) gathering the stack number(s) that were already processed by the toolbox. You can modify it yourself. **--overwrite** or **pp_run_overwrite**=1 ignore this file and will reprocess everything (processed stacks will be then added to the the queue no matter what).
-      
+
 ## MotionCor2 - GPU IDs
 By default, the GPUs are set automatically. If one GPU is hosting one or multiple processes, it will be discarded. Only works with Nvidia devices (nvidia-smi has to be installed). The user can still specify the GPU ID(s), starting from 0.
-      
+
 ## MotionCor2 - number of processes per GPUS
 At the moment, the user has to define the number of jobs to run simultaneously within the same GPUs using **pp_mc_job_per_gpu**. This is not ideal but to make it automatic I would need to load additional third parties (ex: pyCUDA). Therefore, this step is manual for now. This number mainly depends on the memory of your GPU(s) and the size of your images. If too many jobs are spawn in the device, MotionCor2 will fail. The program will let you know and will restart the jobs that failed setting **pp_mc_job_per_gpu** to 1.
-      
+
 ## Default parameters
 To change the default parameters, you only need to change the 'descriptor' variable bellow and change the corresponding fields. Careful not to mess up the format.
 
