@@ -1184,7 +1184,10 @@ class Metadata:
         raw_files_cleaned, raw_files_cleaned_nb, raw_files_cleaned_tilt = [], [], []
         for file in raw_files:
             filename_split = file.split('/')[-1].split('_')
-            stack_nb = int(''.join(i for i in filename_split[self.inputs.ba_set_field_nb] if i.isdigit()))
+            try:
+                stack_nb = int(''.join(i for i in filename_split[self.inputs.ba_set_field_nb] if i.isdigit()))
+            except IndexError or ValueError as err:
+                raise IndexError(f'Clean files (nb): {err}')
 
             # first check that the stack was not processed already
             if stack_nb in stack2remove:
@@ -1201,8 +1204,8 @@ class Metadata:
                 file_tilt = filename_split[self.inputs.ba_set_field_tilt].replace(
                     f'.{self.extension}', '').replace('[', '').replace(']', '')
                 raw_files_cleaned_tilt.append(float(file_tilt))
-            except IndexError as err:
-                raise IndexError(f'Clean raw files: {err}')
+            except IndexError or ValueError as err:
+                raise IndexError(f'Clean files (tilt): {err}')
 
         return raw_files_cleaned, raw_files_cleaned_nb, raw_files_cleaned_tilt
 
