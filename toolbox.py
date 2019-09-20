@@ -20,9 +20,10 @@ TODO:   1)  Denoising (Janni or Topaz? or something simpler like what we are cur
         2)  Generate output graphs for alignment quality and Ctffind.
         3)  Unittest.
         4)  Send an email to David about the tilt axis offset.
+        5)  Zhengyi noticed strange behavior with new version of MotionCor2. Need to investigate this.
 """
 
-VERSION = '0.13'
+VERSION = '0.13.1'
 
 # The descriptor must be correctly formatted for the interactive mode and create_input_file to work.
 # Format: <param1>//<type1>//<help1>//<default1>//..//<param2>//<type2>//<help2>//<default2>
@@ -43,9 +44,9 @@ available logical cores//{multiprocessing.cpu_count()}//
 
 ba_path_raw//str//Path of the raw images directory. Only used if MotionCor2 is activated. The path can end with
 '*', meaning that the movies are grouped into sub-folders (i.e. raw/stack*)//../raw//
-ba_path_motioncor//str//Where the MotionCor outputs will go. Will be created if doesn't exist//motioncor//
-ba_path_stacks//str//Path of stacks and Ctffind outputs. Will be created if doesn't exist//stacks//
-ba_path_mdocfiles//str//Path of mdoc files. Used to create the rawtlt file. File names must be 
+ad_path_motioncor//str//Where the MotionCor outputs will go. Will be created if doesn't exist//motioncor//
+ad_path_stacks//str//Path of stacks and Ctffind outputs. Will be created if doesn't exist//stacks//
+ad_path_mdocfiles//str//Path of mdoc files. Used to create the rawtlt file. File names must be 
 (path)/*_<stack_nb>.mrc.mdoc with 'stack_nb' being the stack number (zeros padded, 3 characters)//mdocs//
 ad_path_logfile//str//Main log file name. Other log files (MotionCor2, Ctftinf, etc.) will be saved independently//
 toolbox_{datetime.now():%d%b%Y}.log//
@@ -68,8 +69,8 @@ ba_mc_motioncor//str//Path of MotionCor2 program//
 /apps/strubi/motioncorr/2-1.1.0-gcc5.4.0-cuda8.0-sm61/MotionCor2//
 ba_mc_desired_pixelsize//float|str//Desired pixel size. If lower than current pixel size, Fourier cropping 
 will be done by MotionCor2. If 'current': no Ftbin applied, If 'ps_x2': Ftbin=2//ps_x2//
-ba_mc_throw//int//Frame to remove, from the first frame. From 0//0//
-ba_mc_trunc//int//Frame to remove, from the last frame. From 0//0//
+ad_mc_throw//int//Frame to remove, from the first frame. From 0//0//
+ad_mc_trunc//int//Frame to remove, from the last frame. From 0//0//
 ad_mc_tolerance//float//Tolerance of alignment accuracy: less than X pixel//0.5//
 ad_mc_iter//int//Iterations after which the alignment stops (if tolerance not achieved already)//10//
 ad_mc_patch//int,int(,int)//After global alignment, divides the corrected frames into X*X patches on which 
@@ -80,8 +81,8 @@ extrapolated. Recommended for low-signal movie stacks//1//
 ba_mc_gpu//int|str//GPU IDs. Can be a list of int separated by comas (ex: 0,1,2,3) or 'auto'. These must correspond 
 to the ID displayed using nvidia-smi. If 'auto', the program will select the visible GPUs 
 that do not have any process running//auto//
-ba_mc_jobs_per_gpu//int//Number of MotionCor jobs per GPU. For K2 super-resolution and 1080Ti, 2-3 jobs max. 
-I recommend to try with one stack to see how many memory is allocated//3//
+ba_mc_jobs_per_gpu//int//Number of MotionCor jobs per GPU. I recommend to try with one stack to see how many
+memory is allocated//3//
 ad_mc_gpu_mem_usage//float//GPU memory allocated to buffer the movie stacks. For multiple MotionCor2 jobs in one
 GPU, it is recommended to set it to 0. Default=0.5//0.5//
 ba_mc_tif//bool//If the raw images are in TIF//0//
@@ -102,7 +103,7 @@ ad_ctf_exhaustive//str//Slower, more exhaustive search//no//
 ad_ctf_astig_restraint//str//Use a restraint on astigmatism//no//
 ad_ctf_phase_shift//float//Find additional phase shift//no//
 
-ba_brt_adoc//str//Batchruntomo adoc file to use. Overwrites every ba_brt parameters except ad_brt_start 
+ad_brt_adoc//str//Batchruntomo adoc file to use. Overwrites every ba_brt parameters except ad_brt_start 
 and ad_brt_end//default//
 ba_brt_gold_size//float//Size of gold beads in nm//10//
 ba_brt_rotation_angle//float//Initial angle of rotation in the plane of projection. This is the CCW positive 
@@ -254,9 +255,9 @@ class InputParameters:
         self.ad_set_max_cpus = None
 
         self.ba_path_raw = None
-        self.ba_path_motioncor = None
-        self.ba_path_stacks = None
-        self.ba_path_mdocfiles = None
+        self.ad_path_motioncor = None
+        self.ad_path_stacks = None
+        self.ad_path_mdocfiles = None
         self.ad_path_logfile = None
 
         self.ba_otf_max_images_per_stack = None
@@ -264,12 +265,12 @@ class InputParameters:
 
         self.ba_mc_motioncor = None
         self.ba_mc_desired_pixelsize = None
-        self.ba_mc_throw = None
-        self.ba_mc_trunc = None
         self.ba_mc_gpu = None
         self.ba_mc_jobs_per_gpu = None
         self.ba_mc_tif = None
         self.ba_mc_gain = None
+        self.ad_mc_throw = None
+        self.ad_mc_trunc = None
         self.ad_mc_tolerance = None
         self.ad_mc_iter = None
         self.ad_mc_patch = None
@@ -291,9 +292,9 @@ class InputParameters:
         self.ad_ctf_astig_restraint = None
         self.ad_ctf_phase_shift = None
 
-        self.ba_brt_adoc = None
         self.ba_brt_gold_size = None
         self.ba_brt_rotation_angle = None
+        self.ad_brt_adoc = None
         self.ad_brt_bin_coarse = None
         self.ad_brt_target_nb_beads = None
         self.ad_brt_bin_ali = None
@@ -385,7 +386,8 @@ class InputParameters:
 
     def save2logfile(self):
         """Save the inputs to the log file."""
-        inputs = '\n\t'.join(f'{key}: {value}' for key, value in self.__dict__.items() if 'ba_' in key)
+        inputs = '\n\t'.join(f'{key}: {value}' for key, value in self.__dict__.items()
+                             if 'ba_' in key or 'ad_' in key)
         with open(self.ad_path_logfile, 'a') as log_file:
             log_file.write(f'Toobox version {VERSION}.\n'
                            f"Using parameters:\n\t{inputs}\n\n")
@@ -397,7 +399,7 @@ class InputParameters:
                    f"'ba_set_field_nb', 'ba_set_field_tilt' must match the motion corrected images.{Colors.reset}\n")
         if not self.ba_run_stack and self.ba_run_batchruntomo:
             logger(f"{Colors.r}WARNING: Newstack deactivated.\n"
-                   f"Your stacks must be as followed: <ba_path_stacks>/stack<nb>/<ba_prefix2add>_<nb>.st, "
+                   f"Your stacks must be as followed: <ad_path_stacks>/stack<nb>/<ba_prefix2add>_<nb>.st, "
                    f"with <nb> being the 3 digit stack number (padded with zeros).{Colors.reset}\n")
         if self.ba_run_onthefly and self.hidden_run_nb:
             logger(f"{Colors.r}WARNING: On-the-fly mode activated with positive restriction (--nb/ad_run_nb).\n"
@@ -538,7 +540,7 @@ class InputParameters:
         # parse
         # empty parameters are accepted
         inputs_dict = {}
-        r = re.compile(r'^\w.+=(\S+|\s)')
+        r = re.compile(r'^\w+=(\S+|\s)')
         for line in lines:
             for m in r.finditer(line):
                 key, value = m.group().split('=')
@@ -726,6 +728,7 @@ class InputInteractive:
         descriptor_param = [self.defaults[i:i + 4] for i in range(0, len(self.defaults), 4)]
 
         all_inputs = {}
+        print("Tip: answering '+' will display the parameter description.")
         print('--- Project ---')
         all_inputs.update(self._get_inputs_collector(
             filter(lambda x: x[0].split('_')[1] == 'set', descriptor_param)))
@@ -829,7 +832,7 @@ class OnTheFly:
     """When the microscope is done with a stack, send it to pre-processing."""
 
     def __init__(self, inputs):
-        self.path = inputs.ba_path_raw if inputs.ba_run_motioncor else inputs.ba_path_motioncor
+        self.path = inputs.ba_path_raw if inputs.ba_run_motioncor else inputs.ad_path_motioncor
         self.prefix = inputs.ba_set_prefix2look4
         self.extension = 'tif' if inputs.ba_mc_tif and inputs.ba_run_motioncor else 'mrc'
         self.field_nb = inputs.ba_set_field_nb
@@ -1100,7 +1103,7 @@ class Metadata:
         self.stacks_nb = None
         self.stacks_len = None
         self.stacks_images_per_stack = None
-        self.path2catch = inputs.ba_path_raw if inputs.ba_run_motioncor else inputs.ba_path_motioncor
+        self.path2catch = inputs.ba_path_raw if inputs.ba_run_motioncor else inputs.ad_path_motioncor
         self.extension = 'tif' if inputs.ba_mc_tif and inputs.ba_run_motioncor else 'mrc'
 
     def get_metadata(self):
@@ -1117,7 +1120,7 @@ class Metadata:
         if self.inputs.ba_run_motioncor:
             meta['gpu'] = self._get_gpu_id()
             meta['output'] = meta.apply(
-                lambda row: f"{self.inputs.ba_path_motioncor}/"
+                lambda row: f"{self.inputs.ad_path_motioncor}/"
                             f"{self.inputs.ba_set_prefix2add}_{row['nb']:03}_{row['tilt']}.mrc",
                 axis=1)
         else:
@@ -1300,7 +1303,7 @@ class MotionCor:
         """
         self.log = []
         self.stack_padded = f'{stack:03}'
-        self.log_filename = f"{inputs.ba_path_motioncor}/{inputs.ba_set_prefix2add}_{self.stack_padded}.log"
+        self.log_filename = f"{inputs.ad_path_motioncor}/{inputs.ba_set_prefix2add}_{self.stack_padded}.log"
         self.first_run = True
 
         self._run_motioncor(inputs, meta_tilt)
@@ -1361,8 +1364,8 @@ class MotionCor:
                 '-Group', inputs.ad_mc_group,
                 '-FtBin', str(inputs.hidden_mc_ftbin),
                 '-PixSize', str(inputs.ba_set_pixelsize),
-                '-Throw', inputs.ba_mc_throw,
-                '-Trunc', inputs.ba_mc_trunc]
+                '-Throw', inputs.ad_mc_throw,
+                '-Trunc', inputs.ad_mc_trunc]
 
     @staticmethod
     def _check_motioncor_output(meta_tilt):
@@ -1424,7 +1427,7 @@ class Stack:
         """
         stack, meta_tilt, inputs = task_from_manager
         self.stack_padded = f'{stack:03}'
-        self.path = f'{inputs.ba_path_stacks}/stack{self.stack_padded}'
+        self.path = f'{inputs.ad_path_stacks}/stack{self.stack_padded}'
         self.filename_stack = f"{self.path}/{inputs.ba_set_prefix2add}_{self.stack_padded}.st"
         self.filename_fileinlist = f"{self.path}/{inputs.ba_set_prefix2add}_{self.stack_padded}.txt"
         self.filename_rawtlt = f"{self.path}/{inputs.ba_set_prefix2add}_{self.stack_padded}.rawtlt"
@@ -1435,7 +1438,7 @@ class Stack:
         # To create the template for newstack and the rawtlt,
         # the images needs to be ordered by tilt angles.
         meta_tilt = meta_tilt.sort_values(by='tilt', axis=0, ascending=True)
-        self._create_rawtlt(meta_tilt, inputs.ba_path_mdocfiles)
+        self._create_rawtlt(meta_tilt, inputs.ad_path_mdocfiles)
 
         # run newstack
         if inputs.ba_run_stack:
@@ -1555,7 +1558,7 @@ class Batchruntomo:
 
     def _create_adoc(self, inputs):
         """Create an adoc file from default adoc or using specified adoc file directly."""
-        if inputs.ba_brt_adoc == 'default':
+        if inputs.ad_brt_adoc == 'default':
             # compute bin coarsed using desired pixel size
             inputs.set_bin_coarsed()
 
@@ -1570,10 +1573,10 @@ class Batchruntomo:
             with open(self.filename_adoc, 'w') as file:
                 file.write(adoc_file)
         else:
-            if os.path.isfile(inputs.ba_brt_adoc):
-                self.filename_adoc = inputs.ba_brt_adoc
+            if os.path.isfile(inputs.ad_brt_adoc):
+                self.filename_adoc = inputs.ad_brt_adoc
             else:
-                inputs.ba_brt_adoc = 'default'
+                inputs.ad_brt_adoc = 'default'
                 self._create_adoc(inputs)
 
     def _get_batchruntomo(self, inputs):
@@ -1694,7 +1697,7 @@ class Ctffind:
         stack, meta_tilt, inputs = task_from_manager
         stack_padded = f'{stack:03}'
         stack_display_nb = f'{Colors.b_b}{Colors.k}stack{stack_padded}{Colors.reset}'
-        path_stack = f'{inputs.ba_path_stacks}/stack{stack_padded}'
+        path_stack = f'{inputs.ad_path_stacks}/stack{stack_padded}'
         filename_log = f"{path_stack}/{inputs.ba_set_prefix2add}_{stack_padded}_ctffind.log"
 
         self.filename_output = f"{path_stack}/{inputs.ba_set_prefix2add}_{stack_padded}_ctffind.mrc"
@@ -1803,8 +1806,8 @@ def preprocessing(inputs):
     :param inputs:      InputParameters
     """
     # set output directories
-    os.makedirs(inputs.ba_path_motioncor, exist_ok=True)
-    os.makedirs(inputs.ba_path_stacks, exist_ok=True)
+    os.makedirs(inputs.ad_path_motioncor, exist_ok=True)
+    os.makedirs(inputs.ad_path_stacks, exist_ok=True)
 
     logger('Start preprocessing.')
 
